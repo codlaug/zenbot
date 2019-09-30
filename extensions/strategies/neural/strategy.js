@@ -3,7 +3,7 @@ let convnetjs = require('convnetjs')
   , n = require('numbro')
   , ema = require('../../../lib/ema')
   , Phenotypes = require('../../../lib/phenotype')
-const cluster = require('cluster')
+
 
 // the below line starts you at 0 threads
 global.forks = 0
@@ -47,84 +47,77 @@ module.exports = {
       s.neural.net.makeLayers(s.neural.layer_defs)
       s.neural.trainer = new convnetjs.SGDTrainer(s.neural.net, {learning_rate:s.options.learningrate, momentum:s.options.momentum, batch_size:1, l2_decay:s.options.decay})
     }
-    if (cluster.isMaster) {
-      ema(s, 'neural', s.options.neural)
-      if (global.forks < s.options.threads) { cluster.fork(); global.forks++ }
-      cluster.on('exit', (code) => { process.exit(code) })
-    }
 
-    if (cluster.isWorker) {
-      ema(s, 'neural', s.options.neural)
-      var tlp = []
-      var tll = []
-      // this thing is crazy run with trendline placed here. But there needs to be a coin lock so you dont buy late!
-      if (!s.in_preroll && s.lookback[s.options.min_periods]) {
-        var min_predict = s.options.min_predict > s.options.min_periods ? s.options.min_periods : s.options.min_predict
-        for (let i = 0; i < s.options.min_periods; i++) {
-          tll.push(s.lookback[i])
-        }
-        for (let i = 0; i < min_predict; i++) {
-          tlp.push(s.lookback[i])
-        }
-        var my_data = tll.reverse()
-        var learn = function () {
-          //Learns
-          for (var j = 0; j < s.options.learns; j++) {
-            for (var i = 0; i < my_data.length - s.neural.neuralDepth; i++) {
-              var data = my_data.slice(i, i + s.neural.neuralDepth)
-              var real_value = my_data[i + s.neural.neuralDepth]
-              var x = new convnetjs.Vol(5, 1, s.neural.neuralDepth, 0)
+    ema(s, 'neural', s.options.neural)
+    var tlp = []
+    var tll = []
+    // this thing is crazy run with trendline placed here. But there needs to be a coin lock so you dont buy late!
+    if (!s.in_preroll && s.lookback[s.options.min_periods]) {
+      var min_predict = s.options.min_predict > s.options.min_periods ? s.options.min_periods : s.options.min_predict
+      for (let i = 0; i < s.options.min_periods; i++) {
+        tll.push(s.lookback[i])
+      }
+      for (let i = 0; i < min_predict; i++) {
+        tlp.push(s.lookback[i])
+      }
+      var my_data = tll.reverse()
+      var learn = function () {
+        //Learns
+        for (var j = 0; j < s.options.learns; j++) {
+          for (var i = 0; i < my_data.length - s.neural.neuralDepth; i++) {
+            var data = my_data.slice(i, i + s.neural.neuralDepth)
+            var real_value = my_data[i + s.neural.neuralDepth]
+            var x = new convnetjs.Vol(5, 1, s.neural.neuralDepth, 0)
 
-              for (var k = 0; k < s.neural.neuralDepth; k++) {
-                x.set(0,0,k,data[k].open)
-                x.set(1,0,k,data[k].close)
-                x.set(2,0,k,data[k].high)
-                x.set(3,0,k,data[k].low)
-                x.set(4,0,k,data[k].volume)
-              }
-
-              s.neural.trainer.train(x, [real_value.open, real_value.close, real_value.high, real_value.low, real_value.volume])
+            for (var k = 0; k < s.neural.neuralDepth; k++) {
+              x.set(0,0,k,data[k].open)
+              x.set(1,0,k,data[k].close)
+              x.set(2,0,k,data[k].high)
+              x.set(3,0,k,data[k].low)
+              x.set(4,0,k,data[k].volume)
             }
+
+            s.neural.trainer.train(x, [real_value.open, real_value.close, real_value.high, real_value.low, real_value.volume])
           }
         }
-        var predict = function(data) {
-          var x = new convnetjs.Vol(5, 1, s.neural.neuralDepth, 0)
+      }
+      var predict = function(data) {
+        var x = new convnetjs.Vol(5, 1, s.neural.neuralDepth, 0)
 
-          for (var k = 0; k < s.neural.neuralDepth; k++) {
-            x.set(0,0,k,data[k].open)
-            x.set(1,0,k,data[k].close)
-            x.set(2,0,k,data[k].high)
-            x.set(3,0,k,data[k].low)
-            x.set(4,0,k,data[k].volume)
-          }
-
-          var predicted_value = s.neural.net.forward(x)
-          return predicted_value.w[1] // close value - x.set(1,0,k,data[k].close)
+        for (var k = 0; k < s.neural.neuralDepth; k++) {
+          x.set(0,0,k,data[k].open)
+          x.set(1,0,k,data[k].close)
+          x.set(2,0,k,data[k].high)
+          x.set(3,0,k,data[k].low)
+          x.set(4,0,k,data[k].volume)
         }
-        learn()
-        var item = tlp.reverse()
-        s.prediction = predict(item)
+
+        var predicted_value = s.neural.net.forward(x)
+        return predicted_value.w[1] // close value - x.set(1,0,k,data[k].close)
       }
-      // NORMAL onPeriod STUFF here
-      global.predi = s.prediction
-      //something strange is going on here
-      global.sig0 = global.predi > oldmean
-      if (
-        global.sig0 === false
-      )
-      {
-        s.signal = 'sell'
-      }
-      else if
-      (
-        global.sig0 === true
-      )
-      {
-        s.signal = 'buy'
-      }
-      oldmean = global.predi
-      cb()
+      learn()
+      var item = tlp.reverse()
+      s.prediction = predict(item)
     }
+    // NORMAL onPeriod STUFF here
+    global.predi = s.prediction
+    //something strange is going on here
+    global.sig0 = global.predi > oldmean
+    if (
+      global.sig0 === false
+    )
+    {
+      s.signal = 'sell'
+    }
+    else if
+    (
+      global.sig0 === true
+    )
+    {
+      s.signal = 'buy'
+    }
+    oldmean = global.predi
+    cb()
   },
   onReport: function () {
     var cols = []
