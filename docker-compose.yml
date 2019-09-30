@@ -22,7 +22,7 @@ services:
     image: mongo:latest
     volumes:
       - ./database:/data/db
-    command: mongod --smallfiles --bind_ip=0.0.0.0 --logpath=/dev/null
+    command: mongod --bind_ip=0.0.0.0 --logpath=/dev/null
     expose:
       - 27017
 
