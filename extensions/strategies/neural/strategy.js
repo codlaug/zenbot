@@ -1,7 +1,7 @@
-let convnetjs = require('convnetjs')
-  , z = require('zero-fill')
+let z = require('zero-fill')
   , n = require('numbro')
-  , ema = require('../../../lib/ema')
+  , neural = require('../../../lib/neural')
+  , convnetjs = require('convnetjs')
   , Phenotypes = require('../../../lib/phenotype')
 
 
@@ -28,27 +28,10 @@ module.exports = {
     this.option('learns', 'Number of times to \'learn\' the neural network with past data', Number, 10)
     this.option('learningrate', 'The learning rate of the neural network between 0 and 1 - 0.01 is stock', Number, 0.01)
   },
-  calculate: function () {
+  calculate: function (s) {
+    neural(s, 'neural', s.options.depth)
   },
   onPeriod: function (s, cb) {
-    ema(s, 'neural', s.options.neural)
-    if (s.neural === undefined) {
-      // Create the net the first time it is needed and NOT on every run
-      s.neural = {
-        net : new convnetjs.Net(),
-        layer_defs : [
-          {type:'input', out_sx:5, out_sy:1, out_depth:s.options.depth},
-          {type:'fc', num_neurons: s.options.neurons_1, activation: s.options.activation_1_type},
-          {type:'fc', num_neurons: s.options.neurons_2, activation: s.options.activation_2_type},
-          {type:'regression', num_neurons:5}
-        ],
-        neuralDepth: s.options.depth
-      }
-      s.neural.net.makeLayers(s.neural.layer_defs)
-      s.neural.trainer = new convnetjs.SGDTrainer(s.neural.net, {learning_rate:s.options.learningrate, momentum:s.options.momentum, batch_size:1, l2_decay:s.options.decay})
-    }
-
-    ema(s, 'neural', s.options.neural)
     var tlp = []
     var tll = []
     // this thing is crazy run with trendline placed here. But there needs to be a coin lock so you dont buy late!
@@ -75,6 +58,7 @@ module.exports = {
               x.set(2,0,k,data[k].high)
               x.set(3,0,k,data[k].low)
               x.set(4,0,k,data[k].volume)
+              x.set(5,0,k,data[k].rsi)
             }
 
             s.neural.trainer.train(x, [real_value.open, real_value.close, real_value.high, real_value.low, real_value.volume])
@@ -84,7 +68,7 @@ module.exports = {
       var predict = function(data) {
         var x = new convnetjs.Vol(5, 1, s.neural.neuralDepth, 0)
 
-        for (var k = 0; k < s.neural.neuralDepth; k++) {
+        for (var k = 0; k < s.neural.neuralDepth && k < data.length; k++) {
           x.set(0,0,k,data[k].open)
           x.set(1,0,k,data[k].close)
           x.set(2,0,k,data[k].high)
@@ -93,6 +77,7 @@ module.exports = {
         }
 
         var predicted_value = s.neural.net.forward(x)
+        console.log(predicted_value)
         return predicted_value.w[1] // close value - x.set(1,0,k,data[k].close)
       }
       learn()
@@ -103,18 +88,12 @@ module.exports = {
     global.predi = s.prediction
     //something strange is going on here
     global.sig0 = global.predi > oldmean
-    if (
-      global.sig0 === false
-    )
-    {
+    if (global.sig0 === false) {
       s.signal = 'sell'
-    }
-    else if
-    (
-      global.sig0 === true
-    )
-    {
+    } else if(global.sig0 === true){
       s.signal = 'buy'
+    } else {
+      s.signal = null
     }
     oldmean = global.predi
     cb()
@@ -138,14 +117,14 @@ module.exports = {
     profit_stop_pct: Phenotypes.Range(1,20),
 
     // -- strategy
-    neurons_1: Phenotypes.Range(1, 20),
-    neurons_2: Phenotypes.Range(1, 20),
+    neurons_1: Phenotypes.Range(1, 200),
+    neurons_2: Phenotypes.Range(1, 200),
     activation_1_type: Phenotypes.ListOption(['sigmoid', 'tanh', 'relu']),
     activation_2_type: Phenotypes.ListOption(['sigmoid', 'tanh', 'relu']),
     depth: Phenotypes.Range(1, 200),
     min_predict: Phenotypes.Range(1, 200),
     // momentum and decay and learning rate are decimals?
-    momentum: Phenotypes.RangeFloat(0, 1),
+    momentum: Phenotypes.RangeFloat(0.8, 0.99),
     decay: Phenotypes.RangeFloat(0, 1),
     learns: Phenotypes.Range(1, 500),
     learningrate: Phenotypes.RangeFloat(0, 1)

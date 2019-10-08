@@ -24,8 +24,8 @@ module.exports = {
   onPeriod: function (s, cb) {
     if (s.period.bollinger) {
       if (s.period.bollinger.upperBound && s.period.bollinger.lowerBound) {
-        let upperBound = s.period.bollinger.upperBound
-        let lowerBound = s.period.bollinger.lowerBound
+        const upperBound = s.period.bollinger.upperBound
+        const lowerBound = s.period.bollinger.lowerBound
         if (s.period.close > (upperBound / 100) * (100 - s.options.bollinger_upper_bound_pct)) {
           s.signal = 'sell'
         } else if (s.period.close < (lowerBound / 100) * (100 + s.options.bollinger_lower_bound_pct)) {
