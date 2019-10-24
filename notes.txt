@@ -1,0 +1,15 @@
+Initialize: Q-network Qθ and target network Qθ− , where θ
+− = θ
+Environment E based on trading data D; Buffer B
+for l ← 0 to L do
+Reset the environment to receive starting state s0 for episode l
+for t ← 0 to τ = 3, 600 do
+t = t + 1
+Select greedy action w.r.t. Qθ(s, a) and apply to environment E
+Receive reward r and next state s
+0
+Augment actions and store the new experience to memory B
+end
+Update θ
+− with θ periodically
+Upd

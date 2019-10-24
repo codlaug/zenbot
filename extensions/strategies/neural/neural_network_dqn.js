@@ -25,27 +25,9 @@ const defaults = {
   decay: 0.001
 }
 
-function DataVolume(data) {
-  // console.log(data)
-  data = data.map((item) => 
-    [item.open, item.high, item.low, item.close, item.volume, item.bollinger.upperBound, item.bollinger.midBound, item.bollinger.lowerBound, item.rsi_avg_gain, item.rsi_avg_loss, item.rsi]
-  )
-  const tensor = new tf.tensor(data, [data.length, 5])
-  // console.log(tensor.arraySync())
-
-  // for (var k = 0; k < data.length; k++) {
-  //   vol.set(0, 0, k, data[k].open)
-  //   vol.set(1, 0, k, data[k].close)
-  //   vol.set(2, 0, k, data[k].high)
-  //   vol.set(3, 0, k, data[k].low)
-  //   vol.set(4, 0, k, data[k].volume)
-  //   vol.set(5, 0, k, _.get(data[k], 'bollinger.upperBound', null))
-  //   vol.set(6, 0, k, _.get(data[k], 'bollinger.midBound', null))
-  //   vol.set(7, 0, k, _.get(data[k], 'bollinger.lowerBound', null))
-  // }
-
-  return tensor
-}
+const INPUT_SIZE = 11
+const TEMPORAL_WINDOW = 20
+const NUM_ACTIONS = 2
 
 function NeuralNetwork(options) {
   options = Object.assign(defaults, options)
@@ -55,14 +37,18 @@ function NeuralNetwork(options) {
   const layerDefinitions = {
     layers: [
       // tf.layers.input({shape: [20, 5]}),
-      tf.layers.dense({inputShape: [20,11], units: options.neurons_1, kernelRegularizer: tf.regularizers.l2(), activation: options.activation_1_type}),
+      tf.layers.dense({units: options.neurons_1, kernelRegularizer: tf.regularizers.l2(), activation: options.activation_1_type}),
       tf.layers.dense({units: options.neurons_2, activation: options.activation_2_type}),
       tf.layers.dropout({rate: 0.001}),
       tf.layers.dense({units: 1})
     // {type:'regression', num_neurons: 8}
     ]
   }
-  this.net = tf.sequential(layerDefinitions)
+  this.net = new reimprove.NeuralNetwork()
+  this.net.InputShape = [INPUT_SIZE*TEMPORAL_WINDOW + NUM_ACTIONS*TEMPORAL_WINDOW + INPUT_SIZE]
+  this.net.addNeuralNetworkLayers(layerDefinitions.layers)
+
+  this.net = new reimprove.Model.FromNetwork(this.net, { epochs: 1, stepsPerEpoch: 1 })
 
   this.net.compile({
     optimizer: 'adagrad',
@@ -70,7 +56,6 @@ function NeuralNetwork(options) {
     metrics: ['accuracy']
   })
 
-  console.log(this.net.summary())
 
   // if(fs.existsSync('brain.json')) {
   //   this.net.fromJSON(JSON.parse(fs.readFileSync('brain.json').toString()))

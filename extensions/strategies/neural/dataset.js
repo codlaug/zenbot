@@ -1,21 +1,22 @@
 const tf = require('@tensorflow/tfjs')
+const _ = require('lodash')
 
-const TRAIN_MIN_ROW = 0
-const TRAIN_MAX_ROW = 200
 
 module.exports = function PriceData(data) {
   // data is s.lookback
   
-  data = data.map((item) => 
-    [item.open, item.close, item.high, item.low, item.volume]
+  this.data = data.map((item) => 
+    [item.open, item.close, item.high, item.low, item.volume, _.get(item, 'bollinger.upperBound'), _.get(item, 'bollinger.midBound'), _.get(item, 'bollinger.lowerBound'), item.rsi_avg_gain, item.rsi_avg_loss, item.rsi]
   )
-  this.numColumns = data[0].length
-  this.data = data
-  const minIndex = TRAIN_MIN_ROW
-  const maxIndex = TRAIN_MAX_ROW
+  this.numColumns = this.data[0].length
   const closeIndex = 1
+
+  this.trainMinRow = 0
+  this.trainMaxRow = Math.floor(this.data.length * 0.7)
+  this.valMinRow = Math.floor(this.data.length * 0.7) + 1
+  this.valMaxRow = this.data.length
   
-  this.getNextBatchFunction = function getNextBatchFunction(lookBack, delay, batchSize, step) {
+  this.getNextBatchFunction = function getNextBatchFunction(lookBack, delay, batchSize, step, minIndex, maxIndex) {
     const normalize = false
     const shuffle = false
     const includeDateTime = false
@@ -43,7 +44,13 @@ module.exports = function PriceData(data) {
             done = true
           }
         }
-        console.log(rowIndices)
+        if(rowIndices.length === 0) {
+          console.log('minIndex', minIndex)
+          console.log('lookBack', lookBack)
+          console.log('startIndex', startIndex)
+          console.log('maxIndex', maxIndex)
+          throw new Error()
+        }
         const numExamples = rowIndices.length
         startIndex += numExamples
     
@@ -51,8 +58,8 @@ module.exports = function PriceData(data) {
                 includeDateTime ? this.numColumns + 2 : this.numColumns
         const samples = tf.buffer([numExamples, lookBackSlices, featureLength])
         const targets = tf.buffer([numExamples, 1])
-        console.log('sample shape', samples.toTensor())
-        console.log('target shape', targets.shape)
+        // console.log('sample shape', samples.shape)
+        // console.log('target shape', targets.shape)
         
         // Iterate over examples. Each example contains a number of rows.
         for (let j = 0; j < numExamples; ++j) {
@@ -88,7 +95,8 @@ module.exports = function PriceData(data) {
             exampleRow++
           }
         }
-        console.log('sample shape', samples.toTensor())
+        // console.log('samples tensor', samples.toTensor())
+        // console.log('targets tensor', targets.toTensor())
         // process.exit()
         return {
           value: {xs: samples.toTensor(), ys: targets.toTensor()},

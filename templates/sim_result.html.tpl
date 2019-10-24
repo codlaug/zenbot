@@ -305,6 +305,10 @@ var withData = function (data, trades) {
           .xScale(x)
           .yScale(y);
 
+  var ichimoku = techan.plot.ichimoku()
+          .xScale(x)
+          .yScale(y);
+
   var tradearrow = techan.plot.tradearrow()
           .xScale(x)
           .yScale(y)
@@ -455,6 +459,7 @@ var withData = function (data, trades) {
   yVolume.domain(techan.scale.plot.volume(data).domain());
 
   svg.select("g.candlestick").datum(data)
+  svg.select("g.ichimoku").datum(data)
   var last = data[data.length-1]
   if (!last) {
     return
@@ -476,6 +481,7 @@ var withData = function (data, trades) {
     svg.select("g.volume.axis").call(volumeAxis);
     svg.select("g.percent.axis").call(percentAxis);
     svg.select("g.candlestick").call(candlestick);
+    svg.select("g.ichimoku").call(ichimoku);
     svg.select("g.volume").call(volume);
     svg.select("g.crosshair.ohlc").call(ohlcCrosshair).call(zoom);
     svg.select("g.tradearrow").call(tradearrow);

@@ -1,0 +1,30 @@
+
+
+./scripts/genetic_backtester/darwin.js --selector="poloniex.BTC-USDC" --days=2 --use_strategies=neural --population=11 --fitnessCalcType=profitwl --minTrades=1 --runGenerations=7
+
+
+
+./zenbot.sh sim poloniex.BTC-USDC --activation_1_type=sigmoid --activation_2_type=sigmoid --avg_slippage_pct=0.045 --backtester_generation=8 --buy_stop_pct=0 --decay=0.35755750852524737 --depth=8 --fitnessCalcType=profitwl --learningrate=0.24151748628793435 --learns=46 --markdown_buy_pct=-0.592332100092964 --markup_sell_pct=1.8309209137187001 --max_buy_loss_pct=99 --max_sell_loss_pct=99 --max_slippage_pct=5 --min_periods=160 --min_predict=126 --momentum=0.2675760754239189 --neurons_1=10 --neurons_2=19 --order_poll_time=5000 --order_type=maker --period=120m --period_length=120m --profit_stop_enable_pct=6 --profit_stop_pct=9 --quarentine_time=10 --rsi_periods=18 --runGenerations=7 --sell_stop_pct=0 --strategy=neural --symmetrical=false --threads=1 --net_currency=42037.23755179747 --start=201909261700 --asset_capital=undefined --currency_capital=undefined
+
+
+
+This had an absurdly high end balance
+./zenbot.sh sim poloniex.BTC-USDC --avg_slippage_pct=0.045 --backtester_generation=26 --buy_stop_pct=48 --markdown_buy_pct=1.2880232171292816 --markup_sell_pct=-0.6819576162878791 --max_buy_loss_pct=99 --max_sell_loss_pct=99 --max_slippage_pct=5 --min_periods=82 --neutral_rate=auto --order_poll_time=5000 --order_type=maker --oversold_rsi=56 --oversold_rsi_periods=7 --period=1m --period_length=1m --profit_stop_enable_pct=15 --profit_stop_pct=9 --quarentine_time=10 --rsi_periods=7 --sell_stop_pct=47 --strategy=trend_ema --trend_ema=1 --net_currency=45754.73050732724 --start=201909301700
+
+
+"poloniex.BTC-USDC",null,75.25716521757806,0.259,17,"trend_ema","maker",70986.71788913,40504.31707086069,7,27,"1m",96,2,"module.exports = {""avg_slippage_pct"":0.045,""backtester_generation"":23,""buy_stop_pct"":0,""markdown_buy_pct"":-0.006664984539629604,""markup_sell_pct"":-0.6284047116288387,""max_buy_loss_pct"":99,""max_sell_loss_pct"":99,""max_slippage_pct"":5,""min_periods"":96,""neutral_rate"":""auto"",""order_poll_time"":5000,""order_type"":""maker"",""oversold_rsi"":23,""oversold_rsi_periods"":9,""period"":""1m"",""period_length"":""1m"",""profit_stop_enable_pct"":10,""profit_stop_pct"":5,""quarentine_time"":10,""rsi_periods"":9,""runGenerations"":8,""selector"":""poloniex.BTC-USDC"",""sell_stop_pct"":0,""show_options"":true,""strategy"":""trend_ema"",""symmetrical"":false,""trend_ema"":20,""net_currency"":67503.28143455002,""start"":""201909301700""}"
+
+
+
+This one did well in the random day trial I did
+and did okay in the 30 day trial
+./zenbot.sh sim poloniex.BTC-USDC --avg_slippage_pct=0.045 --buy_stop_pct=44 --markdown_buy_pct=1.744586826120032 --markup_sell_pct=-0.9051518687724949 --max_buy_loss_pct=99 --max_sell_loss_pct=99 --max_slippage_pct=5 --min_periods=26 --neutral_rate=auto --order_poll_time=5000 --order_type=taker --oversold_rsi=43 --oversold_rsi_periods=36 --period=1m --period_length=1m --profit_stop_enable_pct=0 --profit_stop_pct=20 --quarentine_time=10 --rsi_periods=36 --runGenerations=21 --sell_stop_pct=50 --strategy=trend_ema --trend_ema=39 --net_currency=59865.83356021227 --start=201908041700
+
+
+./zenbot.sh sim poloniex.BTC-USDC --activation_1_type=sigmoid --activation_2_type=relu --avg_slippage_pct=0.045 --backtester_generation=70 --buy_stop_pct=20 --decay=0.906967697796091 --depth=10 --fitnessCalcType=classic --learningrate=0.41931104476021175 --learns=28 --markdown_buy_pct=0.10866149582610385 --markup_sell_pct=-0.312773652231237 --max_buy_loss_pct=99 --max_sell_loss_pct=99 --max_slippage_pct=5 --min_periods=11 --min_predict=15 --momentum=0.6165028259425669 --neurons_1=15 --neurons_2=16 --order_poll_time=5000 --order_type=maker --period=8m --period_length=8m --profit_stop_enable_pct=0 --profit_stop_pct=1 --quarentine_time=10 --rsi_periods=18 --sell_stop_pct=13 --strategy=neural --net_currency=36251.83757231398 --start=201910011700
+
+
+
+
+trend bollinger
+./zenbot.sh sim poloniex.BTC-USDC --avg_slippage_pct=0.045 --backtester_generation=90 --bollinger_lower_bound_pct=2.4606507194801335 --bollinger_size=14 --bollinger_time=5.982235697096728 --bollinger_upper_bound_pct=3.5471593331335765 --buy_stop_pct=14 --fitnessCalcType=classic --markdown_buy_pct=4.559283705837659 --markup_sell_pct=4.403353114931042 --max_buy_loss_pct=99 --max_sell_loss_pct=99 --max_slippage_pct=5 --min_periods=52 --order_poll_time=5000 --order_type=taker --period=100m --period_length=100m --profit_stop_enable_pct=6 --profit_stop_pct=4 --quarentine_time=10 --rsi_periods=18 --sell_stop_pct=35 --strategy=trend_bollinger --net_currency=3036.4101464488776 --start=201909250000

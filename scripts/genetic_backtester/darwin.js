@@ -250,9 +250,7 @@ Backtester.init({
     writeSimDataFile(iteration, data, population_data, generationCount)
   }
 })
-/*eslint-disable */
 setInterval(async () => {
-/*eslint-enable */
   if (generationProcessing == false) {
     generationProcessing = true
     await simulateGeneration(generateLaunchFile, population_data, generationCount, pools, noStatSave, runGenerations, selectedStrategies, minimumTrades, fitnessCalcType, ignoreLaunchFitness)

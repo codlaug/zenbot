@@ -1,14 +1,24 @@
 let z = require('zero-fill')
-  , n = require('numbro')
-  , neural = require('../../../lib/neural')
-  , convnetjs = require('convnetjs')
   , Phenotypes = require('../../../lib/phenotype')
-  , reinforcejs = require('reinforcejs')
-  , NeuralNetwork = require('./neural_network_tensorflow')
-  , bollinger = require('../../../lib/bollinger')
+  , bollinger = require('../../../lib/ta_bollinger')
+  , rsi = require('../../../lib/rsi')
   , tf = require('@tensorflow/tfjs')
-  , PriceData = require('./dataset')
+  , fs = require('fs')
+  , TradingAgent = require('./trading_agent')
+  , getStateTensor = require('./get_state')
+  , ichimoku = require('./ichimoku')
+  , ema = require('../../../lib/ema')
+  , adx = require('./adx')
+  , macd = require('./macd')
+  , stochastic = require('./stochastic')
+  , parabolicSAR = require('./parabolic_sar')
+const { onPeriodSimulating, onPeriodTraining } = require('./on_period')
 
+
+const TRAINING = true
+
+
+const FEATURE_LENGTH = 21
 
 function lowerOfTheTwo(a, b) {
   return a < b ? a : b
@@ -23,74 +33,71 @@ module.exports = {
   name: 'neural',
   description: 'Use neural learning to predict future price. Buy = mean(last 3 real prices) < mean(current & last prediction)',
   getOptions: function () {
-    this.option('period', 'Period length - longer gets a better average', String, '30m')
-    this.option('period_length', 'Period length set same as --period', String, '30m')
-    this.option('activation_1_type', 'Neuron Activation Type: sigmoid, tanh, relu', String, 'sigmoid')
-    this.option('neurons_1', 'Neurons in layer 1', Number, 50)
-    this.option('activation_2_type', 'Neuron Activation Type: sigmoid, tanh, relu', String, 'tanh')
-    this.option('neurons_2', 'Neurons in layer 2', Number, 10)
+    this.option('period', 'Period length - longer gets a better average', String, '30s')
+    this.option('period_length', 'Period length set same as --period', String, '30s')
+    this.option('activation_1_type', 'Neuron Activation Type: sigmoid, tanh, relu', String, 'relu')
+    this.option('neurons_1', 'Neurons in layer 1', Number, 32)
+    this.option('activation_2_type', 'Neuron Activation Type: sigmoid, tanh, relu', String, 'linear')
+    this.option('neurons_2', 'Neurons in layer 2', Number, 64)
     this.option('depth', 'Generally the same as min_predict for accuracy', Number, 200)
-    this.option('min_periods', 'Periods to train neural network with from', Number, 200)
+    this.option('min_periods', 'Periods to train neural network with from', Number, 20)
     this.option('min_predict', 'Periods to predict next number from less than min_periods', Number, 20)
     this.option('momentum', 'momentum of prediction between 0 and 1 - 0 is stock', Number, 0.0)
     this.option('decay', 'decay of prediction, use teeny tiny increments beteween 0 and 1 - stock', Number, 0.001)
     this.option('threads', 'Number of processing threads you\'d like to run (best for sim - Possibly broken', Number, 1)
     this.option('learns', 'Number of times to \'learn\' the neural network with past data', Number, 10)
     this.option('learningrate', 'The learning rate of the neural network between 0 and 1 - 0.01 is stock', Number, 0.01)
+    this.option('training', 'Training or running the sim', Boolean, true)
 
     this.option('bollinger_size', 'period size', Number, 20)
     this.option('bollinger_time', 'times of standard deviation between the upper band and the moving averages', Number, 2)
     this.option('bollinger_upper_bound_pct', 'pct the current price should be near the bollinger upper bound before we sell', Number, 0)
     this.option('bollinger_lower_bound_pct', 'pct the current price should be near the bollinger lower bound before we buy', Number, 0)
+
+    this.option('rsi_periods', 'number of RSI periods', Number, 14)
+    this.option('oversold_rsi', 'buy when RSI reaches or drops below this value', Number, 30)
+    this.option('overbought_rsi', 'sell when RSI reaches or goes above this value', Number, 82)
+    this.option('rsi_recover', 'allow RSI to recover this many points before buying', Number, 3)
+    this.option('rsi_drop', 'allow RSI to fall this many points before selling', Number, 0)
+    this.option('rsi_divisor', 'sell when RSI reaches high-water reading divided by this value', Number, 2)
   },
   calculate: function (s) {
     if(typeof s.brain === 'undefined') {
-      s.brain = new NeuralNetwork(s.options)
-    }
-    bollinger(s, 'bollinger', s.options.bollinger_size)
-  },
-  onPeriod: function (s, cb) {
-    var trendLinePredict = []
-    var trendLineLearn = []
-    // this thing is crazy run with trendline placed here. But there needs to be a coin lock so you dont buy late!
-    const notInPreroll = !s.in_preroll
-    const enoughLookbackPeriods = s.lookback[s.options.min_periods]
-    if (notInPreroll && enoughLookbackPeriods) {
-      var min_predict = lowerOfTheTwo(s.options.min_periods, s.options.min_predict)
-      trendLineLearn = s.lookback.slice(0, s.options.min_periods)
-      trendLinePredict = s.lookback.slice(0, min_predict)
-      if(!s.trained && !s.training) {
+      s.brain = new TradingAgent(null, s.options)
+      s.trained = true
+
+      if(fs.existsSync('brain/model.json')) {
         s.training = true
-        s.brain.learn(new PriceData(s.lookback), min_predict).then(() => {
-          s.trained = true
+        s.brain.load().then((r) => {
+          if(r) {
+            s.trained = true
+            s.training = false
+          }
         })
       }
-
-      // console.log('learn from ', trendLineLearn[0])
-      // console.log(trendLineLearn)
-      if(s.trained) {
-        var item = trendLinePredict.reverse()
-        // s.brain.backward(item)
-        s.prediction = s.brain.predict(item)
-      }
     }
-    // NORMAL onPeriod STUFF here
-    global.predi = s.prediction
-    //something strange is going on here
-    global.sig0 = global.predi > s.period.close
-    // console.log(s)
-    if (global.sig0 === false) {
-      s.signal = 'sell'
-    } else if(global.sig0 === true){
-      s.signal = 'buy'
-    } else {
-      s.signal = null
+    bollinger(s, 'bollinger', s.options.bollinger_size, 2, 2, 'EMA').then(result => {
+      const { outRealUpperBand: upper, outRealMiddleBand: mid, outRealLowerBand: lower } = result
+      s.period['bollinger_upper'] = upper
+      s.period['bollinger_mid'] = mid
+      s.period['bollinger_lower'] = lower
+    }).catch(e => {})
+    ema(s, 'trend_ema', s.options.min_periods)
+    if (typeof s.period.trend_ema !== 'undefined') {
+      s.trend = s.period.trend_ema > s.lookback[0].trend_ema ? 'up' : 'down'
     }
-    cb()
+    rsi(s, 'rsi', s.options.rsi_periods)
+    ichimoku(s)
+    adx(s)
+    stochastic(s)
+    macd(s)
+    parabolicSAR(s)
   },
+  onPeriod: TRAINING ? onPeriodTraining : onPeriodSimulating,
   onReport: function () {
     var cols = []
-    cols.push(z(8, n(global.predi).format('0000.00000'), ' '))
+    // cols.push(z(8, n(global.predi).format('0000.00000'), ' '))
+    cols.push(typeof global.bestAction !== 'undefined' ? global.bestAction.toString() : '')
     return cols
   },
 

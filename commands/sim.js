@@ -11,6 +11,18 @@ var tb = require('timebucket')
   , jsonexport = require('jsonexport')
   , _ = require('lodash')
 
+var SegfaultHandler = require('segfault-handler')
+
+SegfaultHandler.registerHandler("crash.log")
+
+process.on('uncaughtException', e => {
+  console.log(e)
+})
+
+process.on('unhandledRejection', e => {
+  console.log(e)
+})
+
 module.exports = function (program, conf) {
   program
     .command('sim [selector]')
@@ -106,7 +118,7 @@ module.exports = function (program, conf) {
       var query_start = so.start ? tb(so.start).resize(so.period_length).subtract(so.min_periods + 2).toMilliseconds() : null
 
       function exitSim () {
-        console.log()
+        console.log('all done')
         if (!s.period) {
           console.error('no trades found! try running `zenbot backfill ' + so.selector.normalized + '` first')
           process.exit(1)
@@ -223,15 +235,21 @@ module.exports = function (program, conf) {
             .replace(/\{\{symbol\}\}/g,  so.selector.normalized + ' - zenbot ' + require('../package.json').version)
           var out_target = so.filename || 'simulations/sim_result_' + so.selector.normalized +'_' + new Date().toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/-/g, '').replace(/:/g, '').replace(/20/, '') + '_UTC.html'
           fs.writeFileSync(out_target, out)
+          if(s.brain) {
+            // fs.writeFileSync('brain.json', JSON.stringify(s.brain.toJSON()))
+            s.brain.save()
+          }
           console.log('wrote', out_target)
         }
 
         simResults.save(options_output)
           .then(() => {
+            console.log('exiting like normal')
             process.exit(0)
           })
           .catch((err) => {
             console.error(err)
+            console.log('exiting on error')
             process.exit(0)
           })
       }
@@ -280,6 +298,7 @@ module.exports = function (program, conf) {
         })
 
         collectionCursor.on('end', function(){
+          console.log('falling off')
           if(numTrades === 0){
             if (so.symmetrical && !reversing) {
               reversing = true
@@ -296,6 +315,7 @@ module.exports = function (program, conf) {
               cursor = lastTrade.time
             }
           }
+          console.log('the edge')
           setImmediate(getNext)
         })
       }
