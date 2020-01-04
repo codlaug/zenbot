@@ -1,13 +1,19 @@
 const Stochastic = require('technicalindicators').Stochastic
 
-module.exports = function adx(s) {
+module.exports = function stochastic(s, options) {
+  if(typeof options === 'undefined') {
+    options = {
+      period: 14,
+      signalPeriod: 2
+    }
+  }
   if (s.lookback.length >= 28) {
     const input = {
       close: s.lookback.slice(0, 28).map(p => p.close).reverse(),
       high: s.lookback.slice(0, 28).map(p => p.high).reverse(),
       low: s.lookback.slice(0, 28).map(p => p.low).reverse(),
-      period: 14,
-      signalPeriod: 2
+      period: options.period,
+      signalPeriod: options.signalPeriod
     }
     const { close, high, low } = s.period
     const result = new Stochastic(input).nextValue({close, high, low})

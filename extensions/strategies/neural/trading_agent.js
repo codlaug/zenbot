@@ -1,37 +1,42 @@
 
 
-const tf = require('@tensorflow/tfjs');
+const tf = require('@tensorflow/tfjs')
 const fs = require('fs')
 
-const {createDeepQNetwork} = require('./dqn');
+const {createDeepQNetwork} = require('./dqn')
+const { createDirectReinforcementNetwork } = require('./direct')
+const { createLstmNetwork } = require('./lstm')
 const {getRandomAction, NUM_ACTIONS, ALL_ACTIONS} = require('./trading_game')
 const getStateTensor = require('./get_state')
-const ReplayMemory = require('./replay_memory');
-const { assertPositiveInteger } = require('./utils');
+const ReplayMemory = require('./replay_memory')
+const { assertPositiveInteger } = require('./utils')
 const IOHandler = require('./io_handler')
 
-const FEATURE_LENGTH = 21
+const FEATURE_LENGTH = 24
+const LOOKBACK_LENGTH = 16
 
 const defaultConfig = {
   epsilonDecayFrames: 100,
   epsilonInit: 0.5,
   epsilonFinal: 0.01,
   featureLength: FEATURE_LENGTH,
-  learningRate: 0.1
+  lookbackLength: LOOKBACK_LENGTH,
+  learningRate: 0.1,
+  replayBufferSize: 1000
 }
 
-const ACTION_HOLD = 0;
-const ACTION_BUY = 1;
-const ACTION_SELL = 2;
+const ACTION_HOLD = 0
+const ACTION_BUY = 1
+const ACTION_SELL = 2
 
 
-const NEUTRAL_REWARD = 0;
-const SELL_MAXIMA_REWARD = 2;
-const SELL_PENALTY = -1;
-const BUY_MINIMA_REWARD = 2;
-const BUY_PENALTY = -1;
-const HOLD_REWARD = 1;
-const HOLD_EXTREMA_PENALTY = -1;
+const NEUTRAL_REWARD = 0
+const SELL_MAXIMA_REWARD = 2
+const SELL_PENALTY = -1
+const BUY_MINIMA_REWARD = 2
+const BUY_PENALTY = -1
+const HOLD_REWARD = 1
+const HOLD_EXTREMA_PENALTY = -1
 
 
 function isCloseToAndAbove(a, b) {
@@ -220,35 +225,37 @@ module.exports = class TradingAgent {
    *     schedule.
    */
   constructor(game, config) {
-    config = Object.assign(config, defaultConfig);
-    assertPositiveInteger(config.epsilonDecayFrames);
+    config = Object.assign(config, defaultConfig)
+    assertPositiveInteger(config.epsilonDecayFrames)
 
-    this.game = game;
+    this.game = game
 
-    this.epsilonInit = config.epsilonInit;
-    this.epsilonFinal = config.epsilonFinal;
-    this.epsilonDecayFrames = config.epsilonDecayFrames;
+    this.epsilonInit = config.epsilonInit
+    this.epsilonFinal = config.epsilonFinal
+    this.epsilonDecayFrames = config.epsilonDecayFrames
     this.epsilonIncrement_ = (this.epsilonFinal - this.epsilonInit) /
-        this.epsilonDecayFrames;
+        this.epsilonDecayFrames
 
-    const lookbackLength = 6;
+    this.lookbackLength = config.lookbackLength
 
-    this.onlineNetwork = createDeepQNetwork(lookbackLength, config.featureLength, NUM_ACTIONS)
-    this.targetNetwork = createDeepQNetwork(lookbackLength, config.featureLength, NUM_ACTIONS)
+    // this.onlineNetwork = createDeepQNetwork(config.lookbackLength, config.featureLength, NUM_ACTIONS)
+    this.onlineNetwork = createLstmNetwork(config.lookbackLength, config.featureLength, NUM_ACTIONS, [256, 128, 64, 32])
+    this.targetNetwork = createLstmNetwork(config.lookbackLength, config.featureLength, NUM_ACTIONS, [256, 128, 64, 32])
     // Freeze taget network: it's weights are updated only through copying from
     // the online network.
-    this.targetNetwork.trainable = false;
+    this.targetNetwork.trainable = false
 
-    this.optimizer = tf.train.adam(config.learningRate);
+    // this.optimizer = tf.train.adam(config.learningRate)
+    this.optimizer = tf.train.sgd(config.learningRate)
 
-    this.replayBufferSize = config.replayBufferSize;
-    this.replayMemory = new ReplayMemory(config.replayBufferSize);
-    this.frameCount = 0;
+    this.replayBufferSize = config.replayBufferSize
+    this.replayMemory = new ReplayMemory(config.replayBufferSize)
+    this.frameCount = 0
   }
 
 
   reset() {
-    this.cumulativeReward_ = 0;
+    this.cumulativeReward_ = 0
   }
 
 
@@ -260,42 +267,55 @@ module.exports = class TradingAgent {
    * @returns {number | null} If this step leads to the end of the game,
    *   the total reward from the game as a plain number. Else, `null`.
    */
-  playStep() {
+  playStep(s) {
+    // console.log('play', s.balance)
     this.epsilon = this.frameCount >= this.epsilonDecayFrames ?
       this.epsilonFinal :
-      this.epsilonInit + this.epsilonIncrement_  * this.frameCount;
-    this.frameCount++;
-
-    const lookbackLength = 3;
+      this.epsilonInit + this.epsilonIncrement_ * this.frameCount
+    this.frameCount++
 
     // The epsilon-greedy algorithm.
     let action
-    const state = this.game.getState();
+    const state = this.game.getState(s, 0)
+    this.lastState = state
     if (Math.random() < this.epsilon) {
       // Pick an action at random.
       action = getRandomAction()
     } else {
       // Greedily pick an action based on online DQN output.
       tf.tidy(() => {
-        const stateTensor = getStateTensor(state, lookbackLength, this.game.stats.length)
-        action = ALL_ACTIONS[this.onlineNetwork.predict(stateTensor).argMax(-1).dataSync()[0]];
+        const stateTensor = getStateTensor(state, this.lookbackLength, this.game.stats.length)
+        action = ALL_ACTIONS[this.onlineNetwork.predict(stateTensor).argMax(-1).dataSync()[0]]
       })
     }
 
-    const {state: nextState, reward, done} = this.game.step(action)
+    return action
+  }
 
+  // called from the afterPeriod callback once the sim knows the outcome
+  completeStep(s, action) {
+    // console.log('complete', s.balance)
+
+    const state = this.lastState
+
+    const {state: nextState, reward, done} = this.game.step(s, action)
+
+    // console.log('state', state, state)
+    // console.log('nextState', nextState, nextState)
     this.replayMemory.append([state, action, reward, done, nextState])
 
+    // cumulativeReward is the total profit
+    // reward is the amount gained or lost from previous state
     this.cumulativeReward_ += reward
     const output = {
       action,
       cumulativeReward: this.cumulativeReward_,
       done
-    };
-    if (done) {
-      this.reset();
     }
-    return output;
+    if (done) {
+      this.reset()
+    }
+    return output
   }
 
   save() {
@@ -311,14 +331,13 @@ module.exports = class TradingAgent {
   }
 
 
-  // TODO: save and load the model
 
 
   addMemory(state, lastAction) {
     // console.log(state.p[2])
     const period = state.p[2]
-    const prevPeriod = state.p[1].close;
-    const prevPrevPeriod = state.p[0].close;
+    const prevPeriod = state.p[1].close
+    const prevPrevPeriod = state.p[0].close
     let reward = 0
 
     const debug = debugging(true)
@@ -391,27 +410,27 @@ module.exports = class TradingAgent {
   trainOnReplayBatch(batchSize, gamma, optimizer) {
     optimizer = this.optimizer
     // Get a batch of examples from the replay buffer.
-    const batch = this.replayMemory.sample(batchSize);
-    console.log(batch[0])
+    const batch = this.replayMemory.sample(batchSize)
+    // console.log('batch', batch[0])
     const lossFunction = () => tf.tidy(() => {
-      const stateTensor = getStateTensor(batch.map(example => example[0]), 6, FEATURE_LENGTH);
-      const actionTensor = tf.tensor1d(batch.map(example => example[1]), 'int32');
-      const qs = this.onlineNetwork.apply(stateTensor, {training: true}).mul(tf.oneHot(actionTensor, NUM_ACTIONS)).sum(-1);
+      const stateTensor = getStateTensor(batch.map(example => example[0]), LOOKBACK_LENGTH, FEATURE_LENGTH)
+      const actionTensor = tf.tensor1d(batch.map(example => example[1]), 'int32')
+      const qs = this.onlineNetwork.apply(stateTensor, {training: true}).mul(tf.oneHot(actionTensor, NUM_ACTIONS)).sum(-1)
 
-      const rewardTensor = tf.tensor1d(batch.map(example => example[2]));
-      const nextStateTensor = getStateTensor(batch.map(example => example[4]), 6, FEATURE_LENGTH);
-      const nextMaxQTensor = this.targetNetwork.predict(nextStateTensor).max(-1);
-      const doneMask = tf.scalar(1).sub(tf.tensor1d(batch.map(example => example[3])).asType('float32'));
-      const targetQs = rewardTensor.add(nextMaxQTensor.mul(doneMask).mul(gamma));
-      return tf.losses.meanSquaredError(targetQs, qs);
-    });
+      const rewardTensor = tf.tensor1d(batch.map(example => example[2]))
+      const nextStateTensor = getStateTensor(batch.map(example => example[4]), LOOKBACK_LENGTH, FEATURE_LENGTH)
+      const nextMaxQTensor = this.targetNetwork.predict(nextStateTensor).max(-1)
+      const doneMask = tf.scalar(1).sub(tf.tensor1d(batch.map(example => example[3])).asType('float32'))
+      const targetQs = rewardTensor.add(nextMaxQTensor.mul(doneMask).mul(gamma))
+      return tf.losses.meanSquaredError(targetQs, qs)
+    })
 
     // Calculate the gradients of the loss function with repsect to the weights
     // of the online DQN.
-    const grads = tf.variableGrads(lossFunction);
+    const grads = tf.variableGrads(lossFunction)
     // Use the gradients to update the online DQN's weights.
-    optimizer.applyGradients(grads.grads);
-    tf.dispose(grads);
+    optimizer.applyGradients(grads.grads)
+    tf.dispose(grads)
     // TODO(cais): Return the loss value here?
   }
 

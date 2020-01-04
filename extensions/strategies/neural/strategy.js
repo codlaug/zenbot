@@ -1,11 +1,13 @@
 let z = require('zero-fill')
+  , n = require('numbro')
   , Phenotypes = require('../../../lib/phenotype')
-  , bollinger = require('../../../lib/ta_bollinger')
+  , bollinger = require('./bollinger')
   , rsi = require('../../../lib/rsi')
   , tf = require('@tensorflow/tfjs')
   , fs = require('fs')
   , TradingAgent = require('./trading_agent')
-  , getStateTensor = require('./get_state')
+  , { TradingGame } = require('./trading_game')
+  , getStateTensor = require('./get_state_old')
   , ichimoku = require('./ichimoku')
   , ema = require('../../../lib/ema')
   , adx = require('./adx')
@@ -13,12 +15,17 @@ let z = require('zero-fill')
   , stochastic = require('./stochastic')
   , parabolicSAR = require('./parabolic_sar')
 const { onPeriodSimulating, onPeriodTraining } = require('./on_period')
+const IOHandler = require('./io_handler')
+const {MinMaxScaler} = require('machinelearn/preprocessing')
+const { PythonShell } = require('python-shell')
+
+const spawn = require('child_process').spawn
 
 
-const TRAINING = true
+const TRAINING = false
+const CAPTURING = false
 
 
-const FEATURE_LENGTH = 21
 
 function lowerOfTheTwo(a, b) {
   return a < b ? a : b
@@ -27,6 +34,15 @@ function lowerOfTheTwo(a, b) {
 // the below line starts you at 0 threads
 global.forks = 0
 // the below line is for calculating the last mean vs the now mean.
+
+function getLastXValues(key) {
+  return function(n) {
+    return this.lookback.slice(0, n).map(i => i[key]).reverse().concat([this.period[key]])
+  }
+}
+
+const scaler = new MinMaxScaler({ featureRange: [0, 1] })
+
 
 
 module.exports = {
@@ -62,41 +78,205 @@ module.exports = {
     this.option('rsi_divisor', 'sell when RSI reaches high-water reading divided by this value', Number, 2)
   },
   calculate: function (s) {
-    if(typeof s.brain === 'undefined') {
-      s.brain = new TradingAgent(null, s.options)
-      s.trained = true
-
-      if(fs.existsSync('brain/model.json')) {
-        s.training = true
-        s.brain.load().then((r) => {
-          if(r) {
-            s.trained = true
-            s.training = false
-          }
-        })
+    if(TRAINING) {
+      if(typeof s.rewards === 'undefined') {
+        s.rewards = []
+      }
+      if(typeof s.game === 'undefined') {
+        s.game = new TradingGame({})
+      }
+    } else {
+      if(typeof s.game === 'undefined') {
+        s.game = null
+      }
+      // if(typeof s.predictor === 'undefined') {
+      //   if(fs.existsSync('predictor/model.json')) {
+      //     s.predictor = null
+      //     tf.loadLayersModel(IOHandler('predictor')).then((model) => {
+      //       s.predictor = model
+      //       console.log('loaded existing predictor model')
+      //       s.predictorModelLoaded = true
+      //     }).catch(e => { console.log('error', e)})
+      //   } else {
+      //     console.log('no model found to load')
+      //     s.predictorModelLoaded = true
+      //   }
+      // }
+      if(typeof s.decider === 'undefined') {
+        if(fs.existsSync('decider/model.json')) {
+          s.decider = null
+          tf.loadGraphModel(IOHandler('decider')).then((model) => {
+            s.decider = model
+            console.log('loaded existing decider model')
+            s.deciderModelLoaded = true
+          }).catch(e => { console.log('error', e)})
+        } else {
+          console.log('no model found to load')
+          s.deciderModelLoaded = true
+        }
       }
     }
-    bollinger(s, 'bollinger', s.options.bollinger_size, 2, 2, 'EMA').then(result => {
-      const { outRealUpperBand: upper, outRealMiddleBand: mid, outRealLowerBand: lower } = result
-      s.period['bollinger_upper'] = upper
-      s.period['bollinger_mid'] = mid
-      s.period['bollinger_lower'] = lower
-    }).catch(e => {})
-    ema(s, 'trend_ema', s.options.min_periods)
-    if (typeof s.period.trend_ema !== 'undefined') {
-      s.trend = s.period.trend_ema > s.lookback[0].trend_ema ? 'up' : 'down'
+    if(false && typeof s.agent === 'undefined') {
+      s.agent = new TradingAgent(s.game, s.options)
+      if(fs.existsSync('brain/model.json')) {
+        s.agent.load().then(() => {
+          console.log('loaded existing model')
+          s.modelLoaded = true
+        }).catch(e => { console.log('error', e)})
+      } else {
+        console.log('no model found to load')
+        s.modelLoaded = true
+      }
     }
-    rsi(s, 'rsi', s.options.rsi_periods)
-    ichimoku(s)
-    adx(s)
-    stochastic(s)
-    macd(s)
-    parabolicSAR(s)
+
+    if(CAPTURING && typeof s.stream === 'undefined') {
+      s.stream = fs.createWriteStream('testdata.json', {flags:'a'})
+    }
+
+    // bollinger(s)
+    // ema(s, 'trend_ema', s.options.min_periods)
+    // if (typeof s.period.trend_ema !== 'undefined') {
+    //   s.trend = s.period.trend_ema > s.lookback[0].trend_ema ? 'up' : 'down'
+    // }
+    // rsi(s, 'rsi', s.options.rsi_periods)
+    // ichimoku(s)
+    // adx(s)
+    // stochastic(s)
+    // macd(s)
+    // parabolicSAR(s)
+
+
+    if(!s.highs) {
+      s.highs = getLastXValues('high').bind(s)
+    }
+
+    if(!s.closes) {
+      s.closes = getLastXValues('close').bind(s)
+    }
+    if(!s.lows) {
+      s.lows = getLastXValues('low').bind(s)
+    }
+    if(!s.volumes) {
+      s.volumes = getLastXValues('volume').bind(s)
+    }
+    if(!s.opens) {
+      s.opens = getLastXValues('open').bind(s)
+    }
+    if(!s.timestamps) {
+      s.timestamps = getLastXValues('time').bind(s)
+    }
+
+    
+    if(!s.fieldList) {
+      s['Open', 'High', 'Low', 'Close', 'Volume', 'volume_adi', 'volume_obv', 'volume_cmf', 'volume_fi', 'volume_em', 
+      'volume_sma_em', 'volume_vpt', 'volume_nvi', 'volatility_atr', 'volatility_bbm', 'volatility_bbh', 'volatility_bbl', 
+      'volatility_bbw', 'volatility_bbhi', 'volatility_bbli', 'volatility_kcc', 'volatility_kch', 'volatility_kcl', 
+      'volatility_kchi', 'volatility_kcli', 'volatility_dcl', 'volatility_dch', 'volatility_dchi', 'volatility_dcli', 
+      'trend_macd', 'trend_macd_signal', 'trend_macd_diff', 'trend_ema_fast', 'trend_ema_slow', 'trend_adx', 'trend_adx_pos', 
+      'trend_adx_neg', 'trend_vortex_ind_pos', 'trend_vortex_ind_neg', 'trend_vortex_ind_diff', 'trend_trix', 'trend_mass_index', 
+      'trend_cci', 'trend_dpo', 'trend_kst', 'trend_kst_sig', 'trend_kst_diff', 'trend_ichimoku_a', 'trend_ichimoku_b', 
+      'trend_visual_ichimoku_a', 'trend_visual_ichimoku_b', 'trend_aroon_up', 'trend_aroon_down', 'trend_aroon_ind', 
+      'trend_psar', 'trend_psar_up', 'trend_psar_down', 'trend_psar_up_indicator', 'trend_psar_down_indicator', 'momentum_rsi', 
+      'momentum_mfi', 'momentum_tsi', 'momentum_uo', 'momentum_stoch', 'momentum_stoch_signal', 'momentum_wr', 'momentum_ao', 
+      'momentum_roc', 'others_dr', 'others_dlr', 'others_cr']
+    }
+
+    if(!s.pythonProcess) {
+      s.pythonProcess = new PythonShell('hello.py')
+
+    }
   },
-  onPeriod: TRAINING ? onPeriodTraining : onPeriodSimulating,
+  // onPeriod: TRAINING ? onPeriodTraining : onPeriodSimulating,
+  onPeriod: function(s, cb) {
+    // console.log(s.period)
+    
+    // tulind.indicators.ad.indicator([s.highs(1), s.lows(1), s.closes(1), s.volumes(1)], [], (err, results) => {
+    //   s.period.volume_adi = results[0][1]
+    // })
+    // tulind.indicators.obv.indicator([s.closes(1), s.volumes(1)], [], (err, results) => {
+    //   console.log(results)
+    //   s.period.volume_obv = results[0][1]
+    // })
+
+    function pythonHandler(data) {
+      const weights = data.toString().slice(2, -3).split(' ').filter(i => i !== '').map(i => parseFloat(i))
+      
+      console.log(weights)
+      if (weights[0] > weights[1]) {
+        s.signal = 'sell'
+      } else if(weights[1] > weights[0]){
+        s.signal = 'buy'
+      } else {
+        s.signal = null
+      } 
+      s.pythonProcess.off('message', pythonHandler)
+      cb()
+    }
+
+    const MIN_PERIODS = 28
+    if(s.lookback.length >= MIN_PERIODS) {
+      const size = MIN_PERIODS
+      
+
+      s.pythonProcess.on('message', pythonHandler)
+
+      s.pythonProcess.send([s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
+
+      // const process = spawn('python3', ['hello.py', s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)])
+      // console.log(['hello.py', s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
+      // process.stderr.on('data', function(data) { 
+      //   console.log(data.toString())
+      // } ) 
+
+      // process.stdout.on('data', function(data) {
+      //   const weights = data.toString().slice(2, -3).split(' ').filter(i => i !== '').map(i => parseFloat(i))
+        
+      //   // if(data) {
+      //   //   const keyVals = data.toString().split('\n')
+      //   //   for(let i = 5; i < keyVals.length; ++i) {
+      //   //     const [key, value] = keyVals[i].split(' ')
+      //   //     s.period[key] = parseFloat(value)
+      //   //   }
+      //   //   console.log(s.period)
+      //   // }
+      //   // if(data) {
+      //   //   const trimmed = data.toString().slice(1, -2)
+      //   //   const arr = trimmed.split(' ').filter(i => i !== '').map(i => parseFloat(i))
+      //   //   console.log(arr)
+      //   //   const predictedAction = s.decider.predict(tf.tensor([arr]))
+      //   //   console.log(predictedAction)
+      //   // }
+      //   // console.log(weights[1] - weights[0])
+      //   if (weights[0] > weights[1]) {
+      //     s.signal = 'sell'
+      //   } else if(weights[1] > weights[0]){
+      //     s.signal = 'buy'
+      //   } else {
+      //     s.signal = null
+      //   } 
+      //   cb()
+      // })
+    } else {
+      cb()
+    }
+
+    // console.log(s.period)
+    // s.getQuote((err, quote) => {
+    //   console.log('bid', quote.bid)
+    //   console.log('ask', quote.ask)
+    //   cb()
+    // })
+    // s.stream.write(JSON.stringify(s.period)+',')
+    // cb()
+  },
+  afterPeriod: function(s, cb) {
+    // console.log('after')
+    // s.agent.completeStep(s)
+    cb()
+  },
   onReport: function () {
     var cols = []
-    // cols.push(z(8, n(global.predi).format('0000.00000'), ' '))
+    cols.push(z(8, n(global.predicted).format('0000.00000'), ' '))
     cols.push(typeof global.bestAction !== 'undefined' ? global.bestAction.toString() : '')
     return cols
   },

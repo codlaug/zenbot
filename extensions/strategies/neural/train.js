@@ -121,111 +121,104 @@ module.exports = async function train(
   }
 }
 
-export function parseArguments() {
-  const parser = new argparse.ArgumentParser({
-    description: 'Training script for a DQN that plays the snake game'
-  });
-  parser.addArgument('--gpu', {
-    action: 'storeTrue',
-    help: 'Whether to use tfjs-node-gpu for training ' +
-    '(requires CUDA GPU, drivers, and libraries).'
-  });
-  parser.addArgument('--height', {
-    type: 'int',
-    defaultValue: 9,
-    help: 'Height of the game board.'
-  });
-  parser.addArgument('--width', {
-    type: 'int',
-    defaultValue: 9,
-    help: 'Width of the game board.'
-  });
-  parser.addArgument('--numFruits', {
-    type: 'int',
-    defaultValue: 1,
-    help: 'Number of fruits present on the board at any given time.'
-  });
-  parser.addArgument('--initLen', {
-    type: 'int',
-    defaultValue: 2,
-    help: 'Initial length of the snake, in number of squares.'
-  });
-  parser.addArgument('--cumulativeRewardThreshold', {
-    type: 'float',
-    defaultValue: 100,
-    help: 'Threshold for cumulative reward (its moving ' +
-    'average) over the 100 latest games. Training stops as soon as this ' +
-    'threshold is reached (or when --maxNumFrames is reached).'
-  });
-  parser.addArgument('--maxNumFrames', {
-    type: 'float',
-    defaultValue: 1e6,
-    help: 'Maximum number of frames to run durnig the training. ' +
-    'Training ends immediately when this frame count is reached.'
-  });
-  parser.addArgument('--replayBufferSize', {
-    type: 'int',
-    defaultValue: 1e4,
-    help: 'Length of the replay memory buffer.'
-  });
-  parser.addArgument('--epsilonInit', {
-    type: 'float',
-    defaultValue: 0.5,
-    help: 'Initial value of epsilon, used for the epsilon-greedy algorithm.'
-  });
-  parser.addArgument('--epsilonFinal', {
-    type: 'float',
-    defaultValue: 0.01,
-    help: 'Final value of epsilon, used for the epsilon-greedy algorithm.'
-  });
-  parser.addArgument('--epsilonDecayFrames', {
-    type: 'int',
-    defaultValue: 1e5,
-    help: 'Number of frames of game over which the value of epsilon ' +
-    'decays from epsilonInit to epsilonFinal'
-  });
-  parser.addArgument('--batchSize', {
-    type: 'int',
-    defaultValue: 64,
-    help: 'Batch size for DQN training.'
-  });
-  parser.addArgument('--gamma', {
-    type: 'float',
-    defaultValue: 0.99,
-    help: 'Reward discount rate.'
-  });
-  parser.addArgument('--learningRate', {
-    type: 'float',
-    defaultValue: 1e-3,
-    help: 'Learning rate for DQN training.'
-  });
-  parser.addArgument('--syncEveryFrames', {
-    type: 'int',
-    defaultValue: 1e3,
-    help: 'Frequency at which weights are sync\'ed from the online network ' +
-    'to the target network.'
-  });
-  parser.addArgument('--savePath', {
-    type: 'string',
-    defaultValue: './models/dqn',
-    help: 'File path to which the online DQN will be saved after training.'
-  });
-  parser.addArgument('--logDir', {
-    type: 'string',
-    defaultValue: null,
-    help: 'Path to the directory for writing TensorBoard logs in.'
-  });
-  return parser.parseArgs();
-}
+// export function parseArguments() {
+//   const parser = new argparse.ArgumentParser({
+//     description: 'Training script for a DQN that plays the snake game'
+//   });
+//   parser.addArgument('--gpu', {
+//     action: 'storeTrue',
+//     help: 'Whether to use tfjs-node-gpu for training ' +
+//     '(requires CUDA GPU, drivers, and libraries).'
+//   });
+//   parser.addArgument('--height', {
+//     type: 'int',
+//     defaultValue: 9,
+//     help: 'Height of the game board.'
+//   });
+//   parser.addArgument('--width', {
+//     type: 'int',
+//     defaultValue: 9,
+//     help: 'Width of the game board.'
+//   });
+//   parser.addArgument('--numFruits', {
+//     type: 'int',
+//     defaultValue: 1,
+//     help: 'Number of fruits present on the board at any given time.'
+//   });
+//   parser.addArgument('--initLen', {
+//     type: 'int',
+//     defaultValue: 2,
+//     help: 'Initial length of the snake, in number of squares.'
+//   });
+//   parser.addArgument('--cumulativeRewardThreshold', {
+//     type: 'float',
+//     defaultValue: 100,
+//     help: 'Threshold for cumulative reward (its moving ' +
+//     'average) over the 100 latest games. Training stops as soon as this ' +
+//     'threshold is reached (or when --maxNumFrames is reached).'
+//   });
+//   parser.addArgument('--maxNumFrames', {
+//     type: 'float',
+//     defaultValue: 1e6,
+//     help: 'Maximum number of frames to run durnig the training. ' +
+//     'Training ends immediately when this frame count is reached.'
+//   });
+//   parser.addArgument('--replayBufferSize', {
+//     type: 'int',
+//     defaultValue: 1e4,
+//     help: 'Length of the replay memory buffer.'
+//   });
+//   parser.addArgument('--epsilonInit', {
+//     type: 'float',
+//     defaultValue: 0.5,
+//     help: 'Initial value of epsilon, used for the epsilon-greedy algorithm.'
+//   });
+//   parser.addArgument('--epsilonFinal', {
+//     type: 'float',
+//     defaultValue: 0.01,
+//     help: 'Final value of epsilon, used for the epsilon-greedy algorithm.'
+//   });
+//   parser.addArgument('--epsilonDecayFrames', {
+//     type: 'int',
+//     defaultValue: 1e5,
+//     help: 'Number of frames of game over which the value of epsilon ' +
+//     'decays from epsilonInit to epsilonFinal'
+//   });
+//   parser.addArgument('--batchSize', {
+//     type: 'int',
+//     defaultValue: 64,
+//     help: 'Batch size for DQN training.'
+//   });
+//   parser.addArgument('--gamma', {
+//     type: 'float',
+//     defaultValue: 0.99,
+//     help: 'Reward discount rate.'
+//   });
+//   parser.addArgument('--learningRate', {
+//     type: 'float',
+//     defaultValue: 1e-3,
+//     help: 'Learning rate for DQN training.'
+//   });
+//   parser.addArgument('--syncEveryFrames', {
+//     type: 'int',
+//     defaultValue: 1e3,
+//     help: 'Frequency at which weights are sync\'ed from the online network ' +
+//     'to the target network.'
+//   });
+//   parser.addArgument('--savePath', {
+//     type: 'string',
+//     defaultValue: './models/dqn',
+//     help: 'File path to which the online DQN will be saved after training.'
+//   });
+//   parser.addArgument('--logDir', {
+//     type: 'string',
+//     defaultValue: null,
+//     help: 'Path to the directory for writing TensorBoard logs in.'
+//   });
+//   return parser.parseArgs();
+// }
 
 async function main() {
-  const args = parseArguments();
-  if (args.gpu) {
-    tf = require('@tensorflow/tfjs-node-gpu');
-  } else {
-    tf = require('@tensorflow/tfjs-node');
-  }
-  console.log(`args: ${JSON.stringify(args, null, 2)}`);
 
   const game = new SnakeGame({
     height: args.height,
@@ -246,6 +239,3 @@ async function main() {
       args.syncEveryFrames, args.savePath, args.logDir);
 }
 
-if (require.main === module) {
-  main();
-}

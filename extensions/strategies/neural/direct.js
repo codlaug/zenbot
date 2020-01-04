@@ -1,7 +1,7 @@
 
 const tf = require('@tensorflow/tfjs')
 
-function createDeepQNetwork(l, f, numActions) {
+function createDirectReinforcementNetwork(l, f, numActions) {
   if (!(Number.isInteger(l) && l > 0)) {
     throw new Error(`Expected height to be a positive integer, but got ${l}`)
   }
@@ -16,30 +16,25 @@ function createDeepQNetwork(l, f, numActions) {
 
   const model = tf.sequential()
   model.add(tf.layers.dense({
-    units: 256,
+    units: 64,
     kernelSize: 3,
     strides: 1,
-    activation: 'relu',
+    activation: 'elu',
     inputShape: [l, f]
   }))
-  model.add(tf.layers.batchNormalization())
   model.add(tf.layers.dense({
-    units: 512,
+    units: 8,
     kernelSize: 3,
     strides: 1,
-    activation: 'relu'
+    activation: 'elu'
   }))
-  model.add(tf.layers.batchNormalization())
   model.add(tf.layers.dense({
-    units: 512,
+    units: 1,
     kernelSize: 3,
     strides: 1,
-    activation: 'relu'
+    activation: 'tanh'
   }))
-  model.add(tf.layers.flatten())
-  model.add(tf.layers.dense({units: 100, activation: 'relu'}))
-  model.add(tf.layers.dropout({rate: 0.25}))
-  model.add(tf.layers.dense({units: numActions}))
+  model.add(tf.layers.dropout({rate: 0.2}))
 
   return model
 }
@@ -75,4 +70,4 @@ function copyWeights(destNetwork, srcNetwork) {
   }
 }
 
-module.exports = { createDeepQNetwork, copyWeights }
+module.exports = { createDirectReinforcementNetwork, copyWeights }

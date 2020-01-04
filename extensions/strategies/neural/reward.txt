@@ -1,0 +1,23 @@
+Algorithm 1: Deep reinforcement learning
+    Initialize: Differentiable policy parameterization π(a|s, θ) (i.e., trading agent)
+    for l ← 0 to L do
+        Generate a new episode (s0, a0, r1, ..., aτ−1, rτ ) following current π(a|s, θ)
+        for t ← 0 to τ = 3, 600 do
+            Cumulative return G ← return from step t (Gt)
+            θ ← θ + αγtG∇θ ln π(at|st, θ)
+            t = t + 1
+    end
+end
+
+We train the weights of this equation by backpropogating the total rewards across the 3600 second time steps
+during the entire hour. To calculate these rewards, we design a reward function that represents a realistic
+depiction of the amount of money that can be expected to be made if the predicted actions were carried out,
+and represented the cash flow. Any amount of the currency pair that is bought represents a reward of r =
+−(Ask Price)(Units Purchased), while any amount sold represents a reward of r = (Bid Price)(Units Sold).
+Note this amount is actually based on the difference between the previous and current actions. These amounts
+account for the spread and are expressed as if any amount in the currency pair is not cash and the reward
+is relative to solely our cash holdings. We make sure that at the end of the hour, the position is liquidated,
+so that a realistic return is calculated. The total reward is thus the sum of the reward of all the time steps
+R = r1 + r2 + .... + r3600. This reward is exactly what one would expect to make trading using the posted
+quotes and prices. At the end of the step, the reward is back-propagated to the weights of the network and
+equation.

@@ -1,45 +1,29 @@
 
 const tf = require('@tensorflow/tfjs')
 
-function createDeepQNetwork(l, f, numActions) {
-  if (!(Number.isInteger(l) && l > 0)) {
-    throw new Error(`Expected height to be a positive integer, but got ${l}`)
-  }
-  if (!(Number.isInteger(f) && f > 0)) {
-    throw new Error(`Expected height to be a positive integer, but got ${f}`)
+function createLstmNetwork(sampleLen, f, numActions, lstmLayerSizes) {
+  if (!(Number.isInteger(sampleLen) && sampleLen > 0)) {
+    throw new Error(`Expected height to be a positive integer, but got ${sampleLen}`)
   }
   if (!(Number.isInteger(numActions) && numActions > 1)) {
     throw new Error(
       'Expected numActions to be a integer greater than 1, ' +
         `but got ${numActions}`)
   }
+  if (!Array.isArray(lstmLayerSizes)) {
+    lstmLayerSizes = [lstmLayerSizes]
+  }
 
   const model = tf.sequential()
-  model.add(tf.layers.dense({
-    units: 256,
-    kernelSize: 3,
-    strides: 1,
-    activation: 'relu',
-    inputShape: [l, f]
-  }))
-  model.add(tf.layers.batchNormalization())
-  model.add(tf.layers.dense({
-    units: 512,
-    kernelSize: 3,
-    strides: 1,
-    activation: 'relu'
-  }))
-  model.add(tf.layers.batchNormalization())
-  model.add(tf.layers.dense({
-    units: 512,
-    kernelSize: 3,
-    strides: 1,
-    activation: 'relu'
-  }))
-  model.add(tf.layers.flatten())
-  model.add(tf.layers.dense({units: 100, activation: 'relu'}))
-  model.add(tf.layers.dropout({rate: 0.25}))
-  model.add(tf.layers.dense({units: numActions}))
+  for (let i = 0; i < lstmLayerSizes.length; ++i) {
+    const lstmLayerSize = lstmLayerSizes[i]
+    model.add(tf.layers.lstm({
+      units: lstmLayerSize,
+      returnSequences: i < lstmLayerSizes.length - 1,
+      inputShape: i === 0 ? [sampleLen, f] : undefined
+    }))
+  }
+  model.add(tf.layers.dense({units: numActions, activation: 'softmax'}))
 
   return model
 }
@@ -75,4 +59,4 @@ function copyWeights(destNetwork, srcNetwork) {
   }
 }
 
-module.exports = { createDeepQNetwork, copyWeights }
+module.exports = { createLstmNetwork, copyWeights }

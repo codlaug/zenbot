@@ -1,12 +1,19 @@
 const MACD = require('technicalindicators').MACD
 
-module.exports = function adx(s) {
+module.exports = function macd(s, options) {
+  if(typeof options === 'undefined') {
+    options = {
+      fastPeriod: 5,
+      slowPeriod: 8,
+      signalPeriod: 3
+    }
+  }
   if (s.lookback.length >= 30) {
     const input = {
       values: s.lookback.slice(0, 30).map(p => p.close).reverse(),
-      fastPeriod: 5,
-      slowPeriod: 8,
-      signalPeriod: 3,
+      fastPeriod: options.fastPeriod,
+      slowPeriod: options.slowPeriod,
+      signalPeriod: options.signalPeriod,
       SimpleMAOscillator: false,
       SimpleMASignal: false
     }

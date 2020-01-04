@@ -9,7 +9,7 @@
 function getRandomInteger(min, max) {
   // Note that we don't reuse the implementation in the more generic
   // `getRandomIntegers()` (plural) below, for performance optimization.
-  return Math.floor((max - min) * Math.random()) + min;
+  return Math.floor((max - min) * Math.random()) + min
 }
 
 /**
@@ -21,26 +21,26 @@ function getRandomInteger(min, max) {
  * @return {number[]} The random integers.
  */
 function getRandomIntegers(min, max, numIntegers) {
-  const output = [];
+  const output = []
   for (let i = 0; i < numIntegers; ++i) {
-    output.push(Math.floor((max - min) * Math.random()) + min);
+    output.push(Math.floor((max - min) * Math.random()) + min)
   }
-  return output;
+  return output
 }
 
 function min(a, b) {
-  return a < b ? a : b;
+  return a < b ? a : b
 }
 
 
 function assertPositiveInteger(x, name) {
   if (!Number.isInteger(x)) {
     throw new Error(
-        `Expected ${name} to be an integer, but received ${x}`);
+      `Expected ${name} to be an integer, but received ${x}`)
   }
   if (!(x > 0)) {
     throw new Error(
-        `Expected ${name} to be a positive number, but received ${x}`);
+      `Expected ${name} to be a positive number, but received ${x}`)
   }
 }
 

@@ -49,72 +49,74 @@ function toArrayBuffer(buf) {
   }
 
 
-module.exports = {
-  save: (modelArtifacts) => {
-    const filePath = 'brain'
-    console.log(filePath)
-    ensureDirectoryExistence(filePath+'/anything.json');
-  
-    const weightsBinPath = path.join(filePath, 'weights.bin');
-    const weightsManifest = [{
-      paths: ['weights.bin'],
-      weights: modelArtifacts.weightSpecs
-    }];
-    const modelJSON = {
-      modelTopology: modelArtifacts.modelTopology,
-      weightsManifest,
-      format: modelArtifacts.format,
-      generatedBy: modelArtifacts.generatedBy,
-      convertedBy: modelArtifacts.convertedBy
-    };
-    if (modelArtifacts.trainingConfig != null) {
-      modelJSON.trainingConfig = modelArtifacts.trainingConfig;
-    }
-    if (modelArtifacts.userDefinedMetadata != null) {
-      modelJSON.userDefinedMetadata = modelArtifacts.userDefinedMetadata;
-    }
-    const modelJSONPath = path.join(filePath, 'model.json');
-    fs.writeFileSync(modelJSONPath, JSON.stringify(modelJSON), 'utf8');
-    fs.writeFileSync(weightsBinPath, Buffer.from(modelArtifacts.weightData), 'binary');
+module.exports = function(modelPath) {
+  return {
+    save: (modelArtifacts) => {
+      const filePath = 'brain'
+      console.log(filePath)
+      ensureDirectoryExistence(filePath+'/anything.json');
     
-    return {
-      // TODO(cais): Use explicit tfc.io.ModelArtifactsInfo type below once it
-      // is available.
-      // tslint:disable-next-line:no-any
-      modelArtifactsInfo: true // getModelArtifactsInfoForJSON(modelArtifacts)
-    }
-  },
-  load: async () => {
-    const filePath = 'brain/model.json';
-    const info = fs.statSync(filePath)
-
-    // `path` can be either a directory or a file. If it is a file, assume
-    // it is model.json file.
-    if (info.isFile()) {
-      const modelJSON = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-
-      const modelArtifacts = {
-        modelTopology: modelJSON.modelTopology,
-        format: modelJSON.format,
-        generatedBy: modelJSON.generatedBy,
-        convertedBy: modelJSON.convertedBy
+      const weightsBinPath = path.join(filePath, 'weights.bin');
+      const weightsManifest = [{
+        paths: ['weights.bin'],
+        weights: modelArtifacts.weightSpecs
+      }];
+      const modelJSON = {
+        modelTopology: modelArtifacts.modelTopology,
+        weightsManifest,
+        format: modelArtifacts.format,
+        generatedBy: modelArtifacts.generatedBy,
+        convertedBy: modelArtifacts.convertedBy
       };
-      if (modelJSON.weightsManifest != null) {
-        const [weightSpecs, weightData] = await loadWeights(modelJSON.weightsManifest, filePath);
-        modelArtifacts.weightSpecs = weightSpecs;
-        modelArtifacts.weightData = weightData;
+      if (modelArtifacts.trainingConfig != null) {
+        modelJSON.trainingConfig = modelArtifacts.trainingConfig;
       }
-      if (modelJSON.trainingConfig != null) {
-        modelArtifacts.trainingConfig = modelJSON.trainingConfig;
+      if (modelArtifacts.userDefinedMetadata != null) {
+        modelJSON.userDefinedMetadata = modelArtifacts.userDefinedMetadata;
       }
-      if (modelJSON.userDefinedMetadata != null) {
-        modelArtifacts.userDefinedMetadata = modelJSON.userDefinedMetadata;
+      const modelJSONPath = path.join(filePath, 'model.json');
+      fs.writeFileSync(modelJSONPath, JSON.stringify(modelJSON), 'utf8');
+      fs.writeFileSync(weightsBinPath, Buffer.from(modelArtifacts.weightData), 'binary');
+      
+      return {
+        // TODO(cais): Use explicit tfc.io.ModelArtifactsInfo type below once it
+        // is available.
+        // tslint:disable-next-line:no-any
+        modelArtifactsInfo: true // getModelArtifactsInfoForJSON(modelArtifacts)
       }
-      return modelArtifacts;
-    } else {
-      throw new Error(
-          'The path to load from must be a file. Loading from a directory ' +
-          'is not supported.');
+    },
+    load: async () => {
+      const filePath = modelPath + '/model.json';
+      const info = fs.statSync(filePath)
+
+      // `path` can be either a directory or a file. If it is a file, assume
+      // it is model.json file.
+      if (info.isFile()) {
+        const modelJSON = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+        const modelArtifacts = {
+          modelTopology: modelJSON.modelTopology,
+          format: modelJSON.format,
+          generatedBy: modelJSON.generatedBy,
+          convertedBy: modelJSON.convertedBy
+        };
+        if (modelJSON.weightsManifest != null) {
+          const [weightSpecs, weightData] = await loadWeights(modelJSON.weightsManifest, filePath);
+          modelArtifacts.weightSpecs = weightSpecs;
+          modelArtifacts.weightData = weightData;
+        }
+        if (modelJSON.trainingConfig != null) {
+          modelArtifacts.trainingConfig = modelJSON.trainingConfig;
+        }
+        if (modelJSON.userDefinedMetadata != null) {
+          modelArtifacts.userDefinedMetadata = modelJSON.userDefinedMetadata;
+        }
+        return modelArtifacts;
+      } else {
+        throw new Error(
+            'The path to load from must be a file. Loading from a directory ' +
+            'is not supported.');
+      }
     }
   }
 }
