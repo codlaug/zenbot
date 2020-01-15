@@ -18,6 +18,7 @@ const { onPeriodSimulating, onPeriodTraining } = require('./on_period')
 const IOHandler = require('./io_handler')
 const {MinMaxScaler} = require('machinelearn/preprocessing')
 const { PythonShell } = require('python-shell')
+const CostBasisCollection = require('./cost_basis')
 
 const spawn = require('child_process').spawn
 
@@ -102,7 +103,7 @@ module.exports = {
       //     s.predictorModelLoaded = true
       //   }
       // }
-      if(typeof s.decider === 'undefined') {
+      if(false && typeof s.decider === 'undefined') {
         if(fs.existsSync('decider/model.json')) {
           s.decider = null
           tf.loadGraphModel(IOHandler('decider')).then((model) => {
@@ -131,6 +132,7 @@ module.exports = {
 
     if(CAPTURING && typeof s.stream === 'undefined') {
       s.stream = fs.createWriteStream('testdata.json', {flags:'a'})
+      s.stream.write('[')
     }
 
     // bollinger(s)
@@ -181,9 +183,35 @@ module.exports = {
       'momentum_roc', 'others_dr', 'others_dlr', 'others_cr']
     }
 
-    if(!s.pythonProcess) {
-      s.pythonProcess = new PythonShell('hello.py')
+    if(!CAPTURING && !s.pythonProcess) {
+      s.pythonProcess = new PythonShell('hello2.py')
+      s.pythonProcess.receiveStderr(function (err,code,signal) {
+        if (err) console.log(err);
+        console.log('The exit code was: ' + code);
+        console.log('The exit signal was: ' + signal);
+        console.log('finished');
+        console.log('finished');
+      })
+      console.log('python init')
+    }
 
+    if(!s.costBasis) {
+      s.costBasis = new CostBasisCollection()
+    }
+    if(typeof s.lastOrderId === 'undefined') {
+      s.lastOrderId = 1000
+    }
+    for(let i = 0; i < s.my_trades.length; ++i) {
+      if(s.my_trades[i].order_id <= s.lastOrderId) continue
+
+      if(s.my_trades[i].type === 'buy') {
+        s.costBasis.append(parseFloat(s.my_trades[i].size)-s.my_trades[i].fee, parseFloat(s.my_trades[i].price))
+      } else if(s.my_trades[i].type === 'sell') {
+        s.costBasis.remove(parseFloat(s.my_trades[i].size))
+      }
+    }
+    if(s.my_trades.length) {
+      s.lastOrderId = s.my_trades[s.my_trades.length-1].order_id
     }
   },
   // onPeriod: TRAINING ? onPeriodTraining : onPeriodSimulating,
@@ -198,64 +226,104 @@ module.exports = {
     //   s.period.volume_obv = results[0][1]
     // })
 
+
+    global.avgPrice = s.costBasis.avgPrice()
+
     function pythonHandler(data) {
-      const weights = data.toString().slice(2, -3).split(' ').filter(i => i !== '').map(i => parseFloat(i))
+      // console.log(data)
+      // const weights = data.toString().split(' ').map(i => parseFloat(i))
       
-      console.log(weights)
-      if (weights[0] > weights[1]) {
-        s.signal = 'sell'
-      } else if(weights[1] > weights[0]){
+      // console.log(weights)
+      // if (weights[0] > weights[1] && weights[0] > weights[2]) {
+      //   s.signal = 'sell'
+      // } else if(weights[1] > weights[0] && weights[1] > weights[2]){
+      //   s.signal = 'buy'
+      // } else {
+      //   s.signal = null
+      // }
+      const avgPrice = s.costBasis.avgPrice()
+
+      const nextPrice = parseFloat(data)
+      global.predicted = nextPrice
+      if(avgPrice == 0 && nextPrice < s.period.close) {
         s.signal = 'buy'
-      } else {
-        s.signal = null
-      } 
+      } else if(nextPrice - avgPrice > 20) {
+        s.signal = 'sell'
+      } else if(nextPrice - avgPrice < -20) {
+        s.signal = 'buy'
+      }
+
       s.pythonProcess.off('message', pythonHandler)
       cb()
     }
 
-    const MIN_PERIODS = 28
-    if(s.lookback.length >= MIN_PERIODS) {
-      const size = MIN_PERIODS
-      
-
-      s.pythonProcess.on('message', pythonHandler)
-
-      s.pythonProcess.send([s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
-
-      // const process = spawn('python3', ['hello.py', s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)])
-      // console.log(['hello.py', s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
-      // process.stderr.on('data', function(data) { 
-      //   console.log(data.toString())
-      // } ) 
-
-      // process.stdout.on('data', function(data) {
-      //   const weights = data.toString().slice(2, -3).split(' ').filter(i => i !== '').map(i => parseFloat(i))
+    if(!CAPTURING) {
+      const MIN_PERIODS = 28
+      if(s.lookback.length >= MIN_PERIODS+20) {
+        const size = MIN_PERIODS+20
         
-      //   // if(data) {
-      //   //   const keyVals = data.toString().split('\n')
-      //   //   for(let i = 5; i < keyVals.length; ++i) {
-      //   //     const [key, value] = keyVals[i].split(' ')
-      //   //     s.period[key] = parseFloat(value)
-      //   //   }
-      //   //   console.log(s.period)
-      //   // }
-      //   // if(data) {
-      //   //   const trimmed = data.toString().slice(1, -2)
-      //   //   const arr = trimmed.split(' ').filter(i => i !== '').map(i => parseFloat(i))
-      //   //   console.log(arr)
-      //   //   const predictedAction = s.decider.predict(tf.tensor([arr]))
-      //   //   console.log(predictedAction)
-      //   // }
-      //   // console.log(weights[1] - weights[0])
-      //   if (weights[0] > weights[1]) {
-      //     s.signal = 'sell'
-      //   } else if(weights[1] > weights[0]){
-      //     s.signal = 'buy'
-      //   } else {
-      //     s.signal = null
-      //   } 
-      //   cb()
-      // })
+        let { asset, currency } = s.balance
+        asset = parseFloat(asset)
+        currency = parseFloat(currency)
+        const portfolioValue = currency + asset * s.period.close
+        const assetPosition = asset / (asset + currency / s.period.close)
+        const currencyPosition = currency / portfolioValue
+
+        const profit = s.start_capital ? (portfolioValue - s.start_capital) / s.start_capital : 0
+
+        const avgCostBasis = (s.period.close - s.costBasis.avgPrice()) / Math.max(s.period.close, s.costBasis.avgPrice())
+
+        // console.log(s.my_trades)
+
+        s.pythonProcess.on('message', pythonHandler)
+
+        // console.log(asset, 'and', s.costBasis.num_shares())
+        // console.log('asset', assetPosition)
+        // console.log('currency', currencyPosition)
+        // console.log('profit', profit)
+        // s.pythonProcess.send([s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size), assetPosition, currencyPosition, profit, avgCostBasis].join(' '))
+        s.pythonProcess.send([s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
+
+        // const process = spawn('python3', ['hello.py', s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)])
+        // console.log(['hello.py', s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
+        // process.stderr.on('data', function(data) { 
+        //   console.log(data.toString())
+        // } ) 
+
+        // process.stdout.on('data', function(data) {
+        //   const weights = data.toString().slice(2, -3).split(' ').filter(i => i !== '').map(i => parseFloat(i))
+          
+        //   // if(data) {
+        //   //   const keyVals = data.toString().split('\n')
+        //   //   for(let i = 5; i < keyVals.length; ++i) {
+        //   //     const [key, value] = keyVals[i].split(' ')
+        //   //     s.period[key] = parseFloat(value)
+        //   //   }
+        //   //   console.log(s.period)
+        //   // }
+        //   // if(data) {
+        //   //   const trimmed = data.toString().slice(1, -2)
+        //   //   const arr = trimmed.split(' ').filter(i => i !== '').map(i => parseFloat(i))
+        //   //   console.log(arr)
+        //   //   const predictedAction = s.decider.predict(tf.tensor([arr]))
+        //   //   console.log(predictedAction)
+        //   // }
+        //   // console.log(weights[1] - weights[0])
+        //   if (weights[0] > weights[1]) {
+        //     s.signal = 'sell'
+        //   } else if(weights[1] > weights[0]){
+        //     s.signal = 'buy'
+        //   } else {
+        //     s.signal = null
+        //   } 
+        //   cb()
+        // })
+      } else {
+        cb()
+      }
+    } else if(CAPTURING) {
+      s.stream.write(JSON.stringify(s.period)+',')
+      cb()
     } else {
       cb()
     }
@@ -277,7 +345,8 @@ module.exports = {
   onReport: function () {
     var cols = []
     cols.push(z(8, n(global.predicted).format('0000.00000'), ' '))
-    cols.push(typeof global.bestAction !== 'undefined' ? global.bestAction.toString() : '')
+    cols.push(typeof global.avgPrice !== 'undefined' ? global.avgPrice.toString() : '')
+    // cols.push(typeof global.bestAction !== 'undefined' ? global.bestAction.toString() : '')
     return cols
   },
 

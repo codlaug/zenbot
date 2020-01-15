@@ -1,7 +1,7 @@
 import sys
 import ta
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import minmax_scale
 import numpy as np
 import tensorflow as tf
 
@@ -21,10 +21,7 @@ x = sess.graph.get_tensor_by_name(x_tensor_name)
 y = sess.graph.get_tensor_by_name(y_tensor_name)
 
 
-# TODO: Be smarter about how I minmax scale
-
-
-min_max_scaler = MinMaxScaler()
+f = open("observations.txt","w")
 
 
 while True:
@@ -38,6 +35,10 @@ while True:
     low = [ float(n) for n in arg_array[3].split(',') ]
     close = [ float(n) for n in arg_array[4].split(',') ]
     volume = [ float(n) for n in arg_array[5].split(',') ]
+    asset = float(arg_array[6])
+    currency = float(arg_array[7])
+    profit = float(arg_array[8])
+    avgPrice = float(arg_array[9])
 
 
 
@@ -54,10 +55,19 @@ while True:
 
     signals = np.nan_to_num(df.loc[:, columns].to_numpy())
 
-    signal_features = min_max_scaler.fit_transform(signals)
+    signal_features = minmax_scale(signals)
 
-    pred = sess.run(y, {x: [signal_features[-1]]})
-    print(pred) #output
+    state = signal_features[-1]
+
+    obs = np.append(state, [asset, currency, profit, avgPrice])
+
+    f.write(str(timestamps[-1])+' '+np.array_str(obs[-5 : -1], precision=5, max_line_width=1200)+'\n')
+
+    pred = sess.run(y, {x: [obs]})
+    # print(y)
+    # pred = sess.run(y, {x: [state]})
+    # print(np.sum(pred[0]))
+    print('{d[0]:04.8f} {d[1]:04.8f} {d[2]:04.8f}'.format(d=pred[0])) #output
 
     # for c,v in zip(columns, df.iloc[-1,:]):
     #     print(c, v)
