@@ -186,11 +186,11 @@ module.exports = {
     if(!CAPTURING && !s.pythonProcess) {
       s.pythonProcess = new PythonShell('hello2.py')
       s.pythonProcess.receiveStderr(function (err,code,signal) {
-        if (err) console.log(err);
-        console.log('The exit code was: ' + code);
-        console.log('The exit signal was: ' + signal);
-        console.log('finished');
-        console.log('finished');
+        if (err) console.log(err)
+        console.log('The exit code was: ' + code)
+        console.log('The exit signal was: ' + signal)
+        console.log('finished')
+        console.log('finished')
       })
       console.log('python init')
     }
