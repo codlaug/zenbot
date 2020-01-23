@@ -1,6 +1,8 @@
 let z = require('zero-fill')
   , n = require('numbro')
   , Phenotypes = require('../../../lib/phenotype')
+  , colors = require('colors')
+  , chalk = require('chalk')
   , bollinger = require('./bollinger')
   , rsi = require('../../../lib/rsi')
   , tf = require('@tensorflow/tfjs')
@@ -19,8 +21,11 @@ const IOHandler = require('./io_handler')
 const {MinMaxScaler} = require('machinelearn/preprocessing')
 const { PythonShell } = require('python-shell')
 const CostBasisCollection = require('./cost_basis')
+const pythonHandler = require('./python_handler3')
+const ss = require('simple-statistics')
+const onReport = require('./on_report')
 
-const spawn = require('child_process').spawn
+// const spawn = require('child_process').spawn
 
 
 const TRAINING = false
@@ -38,7 +43,7 @@ global.forks = 0
 
 function getLastXValues(key) {
   return function(n) {
-    return this.lookback.slice(0, n).map(i => i[key]).reverse().concat([this.period[key]])
+    return this.lookback.slice(0, n-1).map(i => i[key]).reverse().concat([this.period[key]])
   }
 }
 
@@ -169,22 +174,9 @@ module.exports = {
     }
 
     
-    if(!s.fieldList) {
-      s['Open', 'High', 'Low', 'Close', 'Volume', 'volume_adi', 'volume_obv', 'volume_cmf', 'volume_fi', 'volume_em', 
-      'volume_sma_em', 'volume_vpt', 'volume_nvi', 'volatility_atr', 'volatility_bbm', 'volatility_bbh', 'volatility_bbl', 
-      'volatility_bbw', 'volatility_bbhi', 'volatility_bbli', 'volatility_kcc', 'volatility_kch', 'volatility_kcl', 
-      'volatility_kchi', 'volatility_kcli', 'volatility_dcl', 'volatility_dch', 'volatility_dchi', 'volatility_dcli', 
-      'trend_macd', 'trend_macd_signal', 'trend_macd_diff', 'trend_ema_fast', 'trend_ema_slow', 'trend_adx', 'trend_adx_pos', 
-      'trend_adx_neg', 'trend_vortex_ind_pos', 'trend_vortex_ind_neg', 'trend_vortex_ind_diff', 'trend_trix', 'trend_mass_index', 
-      'trend_cci', 'trend_dpo', 'trend_kst', 'trend_kst_sig', 'trend_kst_diff', 'trend_ichimoku_a', 'trend_ichimoku_b', 
-      'trend_visual_ichimoku_a', 'trend_visual_ichimoku_b', 'trend_aroon_up', 'trend_aroon_down', 'trend_aroon_ind', 
-      'trend_psar', 'trend_psar_up', 'trend_psar_down', 'trend_psar_up_indicator', 'trend_psar_down_indicator', 'momentum_rsi', 
-      'momentum_mfi', 'momentum_tsi', 'momentum_uo', 'momentum_stoch', 'momentum_stoch_signal', 'momentum_wr', 'momentum_ao', 
-      'momentum_roc', 'others_dr', 'others_dlr', 'others_cr']
-    }
 
     if(!CAPTURING && !s.pythonProcess) {
-      s.pythonProcess = new PythonShell('hello2.py')
+      s.pythonProcess = new PythonShell('hello3.py')
       s.pythonProcess.receiveStderr(function (err,code,signal) {
         if (err) console.log(err)
         console.log('The exit code was: ' + code)
@@ -198,21 +190,75 @@ module.exports = {
     if(!s.costBasis) {
       s.costBasis = new CostBasisCollection()
     }
+    
     if(typeof s.lastOrderId === 'undefined') {
       s.lastOrderId = 1000
     }
     for(let i = 0; i < s.my_trades.length; ++i) {
       if(s.my_trades[i].order_id <= s.lastOrderId) continue
-
+      // console.log(s.my_trades[i])
       if(s.my_trades[i].type === 'buy') {
-        s.costBasis.append(parseFloat(s.my_trades[i].size)-s.my_trades[i].fee, parseFloat(s.my_trades[i].price))
+        let add = parseFloat(s.my_trades[i].size)-(s.my_trades[i].orig_fee)
+        s.costBasis.append(add, parseFloat(s.my_trades[i].price))
       } else if(s.my_trades[i].type === 'sell') {
+        
         s.costBasis.remove(parseFloat(s.my_trades[i].size))
       }
     }
     if(s.my_trades.length) {
       s.lastOrderId = s.my_trades[s.my_trades.length-1].order_id
     }
+
+    // correct a diff I can't find
+    if(s.costBasis.num_shares() !== s.balance.asset) {
+      if(s.costBasis.num_shares() > s.balance.asset) {
+        const diff = s.costBasis.num_shares() - s.balance.asset
+        s.costBasis.remove(diff)
+      }
+    }
+
+    if(!s.inWarmupPhase) {
+      s.inWarmupPhase = true
+    }
+
+    if(s.lookback.length > 36) {
+      // console.log(s.period.close)
+      // const lastSlope = s.slope2
+      const closes = s.closes(38)
+      s.slope3 = ss.linearRegression(closes.slice(-3).map((c,i) => [i,c])).m
+      s.slope8 = ss.linearRegression(closes.slice(-8).map((c,i) => [i,c])).m
+      s.slope18 = ss.linearRegression(closes.slice(-18).map((c,i) => [i,c])).m
+      s.slope38 = ss.linearRegression(closes.map((c,i) => [i,c])).m
+      // console.log(s.slope2)
+      global.slope3 = s.slope3
+      global.slope8 = s.slope8
+      global.slope18 = s.slope18
+      global.slope38 = s.slope38
+      // if(lastSlope) {
+      //   s.rateOfChangeRateOfChange = s.slope2.m - lastSlope.m
+      //   global.rateOfChangeRateOfChange = s.rateOfChangeRateOfChange
+      // }
+    }
+
+    if(typeof s.periodCount === 'undefined') {
+      s.periodCount = -20 // starts a few periods back
+    }
+
+    if(typeof s.trendLength === 'undefined') {
+      s.trendLength = 0
+    }
+
+    if(typeof s.trendPoints === 'undefined') {
+      s.trendPoints = []
+    }
+
+    if(s.trendPoints.length > 1) {
+      // console.log(s.trendPoints)
+      s.trendStrength = ss.linearRegression(s.trendPoints)
+      // console.log(s.trendStrength)
+      global.trendStrength = s.trendStrength.m
+    }
+    
   },
   // onPeriod: TRAINING ? onPeriodTraining : onPeriodSimulating,
   onPeriod: function(s, cb) {
@@ -226,39 +272,14 @@ module.exports = {
     //   s.period.volume_obv = results[0][1]
     // })
 
+    s.periodCount +=1
+    global.periodCount = s.periodCount
+
 
     global.avgPrice = s.costBasis.avgPrice()
 
-    function pythonHandler(data) {
-      // console.log(data)
-      // const weights = data.toString().split(' ').map(i => parseFloat(i))
-      
-      // console.log(weights)
-      // if (weights[0] > weights[1] && weights[0] > weights[2]) {
-      //   s.signal = 'sell'
-      // } else if(weights[1] > weights[0] && weights[1] > weights[2]){
-      //   s.signal = 'buy'
-      // } else {
-      //   s.signal = null
-      // }
-      const avgPrice = s.costBasis.avgPrice()
-
-      const nextPrice = parseFloat(data)
-      global.predicted = nextPrice
-      if(avgPrice == 0 && nextPrice < s.period.close) {
-        s.signal = 'buy'
-      } else if(nextPrice - avgPrice > 20) {
-        s.signal = 'sell'
-      } else if(nextPrice - avgPrice < -20) {
-        s.signal = 'buy'
-      }
-
-      s.pythonProcess.off('message', pythonHandler)
-      cb()
-    }
-
     if(!CAPTURING) {
-      const MIN_PERIODS = 28
+      const MIN_PERIODS = 28+48
       if(s.lookback.length >= MIN_PERIODS+20) {
         const size = MIN_PERIODS+20
         
@@ -275,7 +296,12 @@ module.exports = {
 
         // console.log(s.my_trades)
 
-        s.pythonProcess.on('message', pythonHandler)
+        const pyHandler = pythonHandler(s, () => {
+          s.pythonProcess.off('message', pyHandler)
+          cb()
+        })
+
+        s.pythonProcess.on('message', pyHandler)
 
         // console.log(asset, 'and', s.costBasis.num_shares())
         // console.log('asset', assetPosition)
@@ -318,6 +344,7 @@ module.exports = {
         //   } 
         //   cb()
         // })
+        
       } else {
         cb()
       }
@@ -342,13 +369,7 @@ module.exports = {
     // s.agent.completeStep(s)
     cb()
   },
-  onReport: function () {
-    var cols = []
-    cols.push(z(8, n(global.predicted).format('0000.00000'), ' '))
-    cols.push(typeof global.avgPrice !== 'undefined' ? global.avgPrice.toString() : '')
-    // cols.push(typeof global.bestAction !== 'undefined' ? global.bestAction.toString() : '')
-    return cols
-  },
+  onReport: onReport,
 
   phenotypes: {
     // -- common

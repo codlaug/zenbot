@@ -26,6 +26,7 @@ class CostBasisCollection {
 
   append(assets, price) {
     this.trades.push(new Trade(assets, price))
+    // console.log('total ', this.num_shares())
   }
 
   num_shares() {
@@ -44,9 +45,9 @@ class CostBasisCollection {
   }
 
   remove(shares) {
-    console.log('removing shares', shares)
+    // console.log('removing shares', shares)
     let percent = shares / this.num_shares()
-    console.log('total ', this.num_shares())
+    // console.log('total ', this.num_shares())
     if(percent > 1) {
       percent = 1.0
     }
@@ -55,7 +56,7 @@ class CostBasisCollection {
       trade.remove(percent)
       // console.log(trade.shares)
     }
-    this.trades = this.trades.filter(t => t.shares > 0.0008)
+    this.trades = this.trades.filter(t => t.shares > 0.000001)
   }
 
 
