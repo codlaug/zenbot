@@ -5,9 +5,10 @@ const z = require('zero-fill')
 
 module.exports = function onReport() {
   var cols = []
-  const { trend8, slope3, slope8, slope18, slope38, trend, trendDiff, periodCount, trendStrength, trendLength, rateOfChangeRateOfChange, trend3, trend18, trend38 } = global
-  cols.push(z(4, n(periodCount).format('0')+' ', ' '))
+  const { trend8, trend, trendDiff, periodCount, trendStrength, trendLength, rateOfChangeRateOfChange, trend3, trend18, trend38, ema, trend18_3 } = global
+  // cols.push(z(4, n(periodCount).format('0')+' ', ' '))
   cols.push(z(8, n(global.avgPrice).format('0.00')+' ', ' '))
+  // cols.push(z(6, n(global.ema).format('0.00')+' ', ' '))
   // cols.push(typeof global.avgPrice !== 'undefined' ? global.avgPrice.toString() : '')
   // if(global.trend26) {
   //   cols.push(chalk.rgb(255, 0, 0)(n(global.trend26.down9).format('00%')+' '))
@@ -20,6 +21,10 @@ module.exports = function onReport() {
     const { down: down18 } = trend18
     cols.push(chalk.rgb(Math.min(255, Math.round(200*((down18-0.3)*5))+55), 0, 0)(n(down18).format('00%')+' '))
   }
+  if(trend18_3) {
+    const { down: down18_3 } = trend18_3
+    cols.push(chalk.rgb(Math.min(255, Math.round(200*((down18_3-0.2)*6))+55), 0, 90)(n(down18_3).format('00%')+' '))
+  }
   if(trend8) {
     const { down: down8 } = trend8
     cols.push(chalk.rgb(Math.min(255, Math.round(200*((down8-0.4)*5))+55), 0, 0)(n(down8).format('00%')+' '))
@@ -28,36 +33,39 @@ module.exports = function onReport() {
     const { down: down3 } = trend3
     cols.push(chalk.rgb(Math.min(255, Math.round(200*((down3-0.4)*5))+55), 0, 0)(n(down3).format('00%')+' '))
   }
-  if(typeof slope3 !== 'undefined') {
-    const red = Math.min(255, Math.round(-255*Math.min(slope3, 0)))
-    const green = Math.min(255, Math.round(255*Math.max(0, slope3)))
-    cols.push(chalk.rgb(red, green, 0)(z(4, n(slope3).format('0.0'), ' ')+' '))
+  if(ema) {
+    cols.push(chalk.rgb(200, 50, 200)(z(4, n(ema).format('0.00'), ' ')+' '))
   }
-  if(typeof slope8 !== 'undefined') {
-    const red = Math.min(255, Math.round(-255*Math.min(slope8, 0)))
-    const green = Math.min(255, Math.round(255*Math.max(0, slope8)))
-    cols.push(chalk.rgb(red, green, 0)(z(4, n(slope8).format('0.0'), ' ')+' '))
-  }
-  if(typeof slope18 !== 'undefined') {
-    const red = Math.min(255, Math.round(-255*Math.min(slope18, 0)))
-    const green = Math.min(255, Math.round(255*Math.max(0, slope18)))
-    cols.push(chalk.rgb(red, green, 0)(z(4, n(slope18).format('0.0'), ' ')+' '))
-  }
-  if(typeof slope38 !== 'undefined') {
-    const red = Math.min(255, Math.round(-255*Math.min(slope38, 0)))
-    const green = Math.min(255, Math.round(255*Math.max(0, slope38)))
-    cols.push(chalk.rgb(red, green, 0)(z(4, n(slope38).format('0.0'), ' ')+' '))
-  }
-  if(typeof rateOfChangeRateOfChange !== 'undefined') {
-    const red = Math.min(255, Math.round(-255*Math.min(rateOfChangeRateOfChange, 0)))
-    const green = Math.min(255, Math.round(255*Math.max(0, rateOfChangeRateOfChange)))
-    cols.push(chalk.rgb(red, green, 0)(z(4, n(rateOfChangeRateOfChange).format('0.0'), ' ')+' '))
-  }
+  // if(typeof slope3 !== 'undefined') {
+  //   const red = Math.min(255, Math.round(-255*Math.min(slope3, 0)))
+  //   const green = Math.min(255, Math.round(255*Math.max(0, slope3)))
+  //   cols.push(chalk.rgb(red, green, 0)(z(4, n(slope3).format('0.0'), ' ')+' '))
+  // }
+  // if(typeof slope8 !== 'undefined') {
+  //   const red = Math.min(255, Math.round(-255*Math.min(slope8, 0)))
+  //   const green = Math.min(255, Math.round(255*Math.max(0, slope8)))
+  //   cols.push(chalk.rgb(red, green, 0)(z(4, n(slope8).format('0.0'), ' ')+' '))
+  // }
+  // if(typeof slope18 !== 'undefined') {
+  //   const red = Math.min(255, Math.round(-255*Math.min(slope18, 0)))
+  //   const green = Math.min(255, Math.round(255*Math.max(0, slope18)))
+  //   cols.push(chalk.rgb(red, green, 0)(z(4, n(slope18).format('0.0'), ' ')+' '))
+  // }
+  // if(typeof slope38 !== 'undefined') {
+  //   const red = Math.min(255, Math.round(-255*Math.min(slope38, 0)))
+  //   const green = Math.min(255, Math.round(255*Math.max(0, slope38)))
+  //   cols.push(chalk.rgb(red, green, 0)(z(4, n(slope38).format('0.0'), ' ')+' '))
+  // }
+  // if(typeof rateOfChangeRateOfChange !== 'undefined') {
+  //   const red = Math.min(255, Math.round(-255*Math.min(rateOfChangeRateOfChange, 0)))
+  //   const green = Math.min(255, Math.round(255*Math.max(0, rateOfChangeRateOfChange)))
+  //   cols.push(chalk.rgb(red, green, 0)(z(4, n(rateOfChangeRateOfChange).format('0.0'), ' ')+' '))
+  // }
   if(trend) {
-    if(trend === 'up') {
-      cols.push(chalk.green('UP '))
-    } else if(trend === 'down') {
-      cols.push(chalk.red('DN '))
+    if(trend === 'risingsell') {
+      cols.push(chalk.red('risingsell '))
+    } else if(trend === 'fallingbuy') {
+      cols.push(chalk.green('fallingbuy '))
     }
   }
   if(trendDiff) {
@@ -67,7 +75,8 @@ module.exports = function onReport() {
     cols.push(chalk.cyan(n(trendStrength).format('0.000')+' '))
   }
   if(trendLength) {
-    cols.push(chalk.cyan(n(trendLength).format('0')+' '))
+    cols.push(chalk.cyan('+'+n(trendLength.buy).format('0')+' '))
+    cols.push(chalk.cyan('-'+n(trendLength.sell).format('0')+' '))
   }
   if(trend3) {
     const { up: up3 } = trend3
@@ -80,6 +89,10 @@ module.exports = function onReport() {
   if(trend18) {
     const { up: up18 } = trend18
     cols.push(chalk.rgb(0, Math.max(1, Math.min(255, Math.round(200*((up18-0.3)*5))+55)), 0)(n(up18).format('00%')+' '))
+  }
+  if(trend18_3) {
+    const { up: up18_3 } = trend18_3
+    cols.push(chalk.rgb(0, Math.max(1, Math.min(255, Math.round(200*((up18_3-0.1)*6))+55)), 90)(n(up18_3).format('00%')+' '))
   }
   if(trend38) {
     const { up: up38 } = trend38

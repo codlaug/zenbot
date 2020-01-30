@@ -6,11 +6,15 @@ from sklearn.preprocessing import MaxAbsScaler
 import numpy as np
 import tensorflow as tf
 from sklearn.externals import joblib
+from PyEMD import EEMD
 
 short_model = tf.keras.models.load_model('predict-trend/trend3both0-2.h5')
 both_model = tf.keras.models.load_model('predict-trend/trend8both0-2.h5')
 long_model = tf.keras.models.load_model('predict-trend/trend18both0-2.h5')
 vlong_model = tf.keras.models.load_model('predict-trend/trend38both0-2.h5')
+long3_model = tf.keras.models.load_model('predict-trend/trend18both05-3.h5')
+
+eemd = EEMD()
 
 TIME_STEPS = 28
 
@@ -56,7 +60,11 @@ max_abs_scaler = joblib.load('predict-trend/scaler.save')
 
 while True:
 
-    args = input()
+    try:
+        args = input()
+    except EOFError:
+        exit()
+    
     arg_array = args.split(' ')
 
     timestamps = [ int(n) for n in arg_array[0].split(',') ]
@@ -77,6 +85,24 @@ while True:
 
 
     # df.to_csv('observations2-'+str(df.iloc[0].name)+'.csv')
+    
+
+    # t = np.linspace(0, 1, len(close))
+    # IMF = eemd.emd(np.array(close), t)
+    # imf_value = IMF[-1][-1]
+    # del IMF
+
+    # close_series = pd.Series(close)
+
+    ema = ta.utils.ema(pd.DataFrame(close), 26)
+    ema_value = ema.iat[-1, 0]
+    # print(close_df, file=sys.stderr)
+
+    # macd = ta.trend.macd(close_series)
+    # macd_value = macd.iat[-1]
+
+    # rsi_value = ta.momentum.rsi(close_series).iat[-1]
+
 
 
     df = df.tail(48)
@@ -113,13 +139,14 @@ while True:
     lng = long_model.predict(trim_dataset(feed, 20), batch_size=20)
     vlong = vlong_model.predict(trim_dataset(feed, 20), batch_size=20)
     # moon = moon_model.predict(trim_dataset(feed, 20), batch_size=20)
+    long3 = long3_model.predict(trim_dataset(feed, 20), batch_size=20)
 
     # short = short[-1]
     # mid = mid[-1]
     # lng = lng[-1]
-    pred = [item for sublist in [short[-1], mid[-1], lng[-1], vlong[-1]] for item in sublist]
+    pred = [item for sublist in [short[-1], mid[-1], lng[-1], vlong[-1], [ema_value], long3[-1][0:2]] for item in sublist]
     
-    print('{d[0]:04.4f} {d[1]:04.4f} {d[2]:04.4f} {d[3]:04.4f} {d[4]:04.4f} {d[5]:04.4f} {d[6]:04.4f} {d[7]:04.4f}'.format(d=pred)) #output
+    print('{d[0]:04.4f} {d[1]:04.4f} {d[2]:04.4f} {d[3]:04.4f} {d[4]:04.4f} {d[5]:04.4f} {d[6]:04.4f} {d[7]:04.4f} {d[8]:04.4f} {d[9]:04.4f} {d[10]:04.4f}'.format(d=pred)) #output
 
     # for c,v in zip(columns, df.iloc[-1,:]):
     #     print(c, v)
