@@ -1,4 +1,3 @@
-let log = require('why-is-node-running')
 
 let z = require('zero-fill')
   , n = require('numbro')
@@ -13,13 +12,14 @@ let z = require('zero-fill')
   // , { TradingGame } = require('./trading_game')
   // , getStateTensor = require('./get_state_old')
   // , ichimoku = require('./ichimoku')
-  // , ema = require('../../../lib/ema')
+  , ema = require('../../../lib/ema')
   // , adx = require('./adx')
   // , macd = require('./macd')
   // , stochastic = require('./stochastic')
   // , parabolicSAR = require('./parabolic_sar')
 // const { onPeriodSimulating, onPeriodTraining } = require('./on_period')
 // const IOHandler = require('./io_handler')
+const logic = require('./logic4')
 const {MinMaxScaler} = require('machinelearn/preprocessing')
 const { PythonShell } = require('python-shell')
 const CostBasisCollection = require('./cost_basis')
@@ -54,6 +54,7 @@ function getLastXValues(key) {
 
 const scaler = new MinMaxScaler({ featureRange: [0, 1] })
 
+// const client = new MongoClient('mongodb://localhost:27017')
 
 
 module.exports = {
@@ -62,37 +63,46 @@ module.exports = {
   getOptions: function () {
     this.option('period', 'Period length - longer gets a better average', String, '30s')
     this.option('period_length', 'Period length set same as --period', String, '30s')
-    this.option('price_higher_diff', '', Number, 0.004)
-    this.option('sell_trend_start_net_prob_amount', '', Number, 2.4)
-    this.option('sell_trend_start_ema_amount', '', Number, 0.0)
-    this.option('sell_trend_count_threshold_1', '', Number, 13)
-    this.option('sell_trend_1_ema', '', Number, 1.0)
-    this.option('sell_trend_1_markup', '', Number, 0.2)
-    this.option('sell_trend_count_threshold_2', '', Number, 11)
-    this.option('sell_trend_2_ema', '', Number, 2.0)
-    this.option('sell_trend_2_prob_threshold', '', Number, 2.4)
-    this.option('sell_trend_increase_prob', '', Number, 2.4)
-    this.option('sell_trend_end_prob', '', Number, 2.1)
-    this.option('sell_trend_end_ema', '', Number, 0.0)
-    this.option('sell_trend_end_signal_threshold', '', Number, 15)
-    this.option('buy_trend_start_prob_threshold', '', Number, 2.2)
-    this.option('buy_trend_start_ema_threshold', '', Number, -1.0)
-    this.option('buy_trend_count_1_threshold', '', Number, 7)
-    this.option('buy_trend_ema_1_threshold', '', Number, -1.0)
-    this.option('buy_trend_1_markdown', '', Number, 0.1)
-    this.option('buy_trend_count_2_threshold', '', Number, 11)
-    this.option('buy_trend_ema_2_threshold', '', Number, -4.0)
-    this.option('buy_trend_prob_2_threshold', '', Number, 2.5)
-    this.option('buy_trend_2_markdown', '', Number, 0.1)
-    this.option('buy_trend_count_3_threshold', '', Number, 11)
-    this.option('buy_trend_ema_3_threshold', '', Number, -4.0)
-    this.option('buy_trend_prob_3_threshold', '', Number, 2.3)
-    this.option('buy_trend_3_markdown', '', Number, 0.1)
-    this.option('buy_trend_increase_prob', '', Number, 2.0)
-    this.option('buy_trend_increase_ema', '', Number, 0.1)
-    this.option('buy_trend_end_prob', '', Number, 2.0)
-    this.option('buy_trend_end_ema', '', Number, 0.2)
-    this.option('buy_trend_end_count_signal_threshold', '', Number, 30)
+    this.option('price_higher_diff', '', Number, 0.04)
+    // this.option('sell_trend_start_net_prob_amount', '', Number, 1.4)
+    // this.option('sell_trend_start_ema_amount', '', Number, 1.4)
+    // this.option('sell_trend_count_threshold_1', '', Number, 13)
+    // this.option('sell_trend_1_ema', '', Number, 1.0)
+    // this.option('sell_trend_1_markup', '', Number, 0.2)
+    // this.option('sell_trend_count_threshold_2', '', Number, 11)
+    // this.option('sell_trend_2_ema', '', Number, 2.0)
+    // this.option('sell_trend_2_prob_threshold', '', Number, 2.4)
+    // this.option('sell_trend_increase_prob', '', Number, 2.3)
+    // this.option('sell_trend_end_prob', '', Number, 2.0)
+    // this.option('sell_trend_end_ema', '', Number, 1.0)
+    // this.option('sell_trend_end_signal_threshold', '', Number, 8)
+    // this.option('buy_trend_start_prob_threshold', '', Number, 2.1)
+    // this.option('buy_trend_start_ema_threshold', '', Number, -1.0)
+    // this.option('buy_trend_count_1_threshold', '', Number, 7)
+    // this.option('buy_trend_ema_1_threshold', '', Number, -1.0)
+    // this.option('buy_trend_1_markdown', '', Number, 0.1)
+    // this.option('buy_trend_count_2_threshold', '', Number, 11)
+    // this.option('buy_trend_ema_2_threshold', '', Number, -4.0)
+    // this.option('buy_trend_prob_2_threshold', '', Number, 2.5)
+    // this.option('buy_trend_2_markdown', '', Number, 0.1)
+    // this.option('buy_trend_count_3_threshold', '', Number, 11)
+    // this.option('buy_trend_ema_3_threshold', '', Number, -4.0)
+    // this.option('buy_trend_prob_3_threshold', '', Number, 2.3)
+    // this.option('buy_trend_3_markdown', '', Number, 0.1)
+    // this.option('buy_trend_increase_prob', '', Number, 2.5)
+    // this.option('buy_trend_increase_ema', '', Number, -5.5)
+    // this.option('buy_trend_end_prob', '', Number, 2.0)
+    // this.option('buy_trend_end_ema', '', Number, -0.2)
+    // this.option('buy_trend_end_count_signal_threshold', '', Number, 21)
+    this.option('sell_prob', '', Number, 0.38)
+    this.option('buy_prob', '', Number, 0.56)
+    this.option('l_buy_prob', '', Number, 0.598)
+    this.option('stoploss', '', Number, 0.0089)
+    this.option('sell_ema_change', '', Number, -0.098)
+    this.option('buy_ema_change', '', Number, -1.0)
+    this.option('profit_high_point', '', Number, 0.0048)
+    this.option('profit_slide', '', Number, 0.0012)
+    
   },
   calculate: function (s) {
     if(TRAINING) {
@@ -146,6 +156,15 @@ module.exports = {
       }
     }
 
+    // console.log(s)
+
+    // if(typeof s.predictStore === 'undefined') {
+    //   client.connect(function(err, client) {
+    //     const db = client.db('zenbot_custom')
+    //     s.predictStore = db.collection('inserts')
+    //   })
+    // }
+
     if(CAPTURING && typeof s.stream === 'undefined') {
       s.stream = fs.createWriteStream('testdata.json', {flags:'a'})
       s.stream.write('[')
@@ -162,6 +181,9 @@ module.exports = {
     // stochastic(s)
     // macd(s)
     // parabolicSAR(s)
+    ema(s, 'shortEma', 9)
+    ema(s, 'longEma', 96)
+    ema(s, 'veryLongEma', 196)
 
 
     if(!s.highs) {
@@ -204,7 +226,14 @@ module.exports = {
     }
     if(typeof s.buyTrendStartPrice === 'undefined') {
       s.buyTrendStartPrice = null
+      s.highestProfit = 0
+      s.buyTrendStartEma = 0
+      s.stopLossCooldown = 0
+      s.buyCooldown = 0
+      s.buyTimer = 0
     }
+
+    // s.period.sidewaysSma = s.lookback.slice(0, 48).reduce((s,{sideways: v}) => s+v, 0) / 48.0
     
 
     if(!s.costBasis) {
@@ -307,6 +336,9 @@ module.exports = {
     global.periodCount = s.periodCount
 
 
+
+  
+
     global.avgPrice = s.costBasis.avgPrice()
 
     if(!CAPTURING) {
@@ -333,7 +365,20 @@ module.exports = {
           cb()
         })
 
-        s.pythonProcess.on('message', pyHandler)
+        if(s.options.mode === 'sim') {
+          s.predictStore.findOne({period_id: s.period.period_id}, function(err, result){
+            if(result) {
+              logic(s, result.weights, cb)
+            } else {
+              s.pythonProcess.on('message', pyHandler)
+              s.pythonProcess.send([s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
+            }
+          })
+        } else {
+          s.pythonProcess.on('message', pyHandler)
+          s.pythonProcess.send([s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
+        }
+        
         
         // console.log('setTimeout')
         
@@ -344,7 +389,6 @@ module.exports = {
         // console.log('profit', profit)
         // s.pythonProcess.send([s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size), assetPosition, currencyPosition, profit, avgCostBasis].join(' '))
         // console.log('py send')
-        s.pythonProcess.send([s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
 
         // const process = spawn('python3', ['hello.py', s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)])
         // console.log(['hello.py', s.timestamps(size), s.opens(size), s.highs(size), s.lows(size), s.closes(size), s.volumes(size)].join(' '))
@@ -418,46 +462,45 @@ module.exports = {
 
   phenotypes: {
     // -- common
-    period_length: Phenotypes.RangePeriod(1, 120, 'm'),
-    min_periods: Phenotypes.Range(1, 200),
-    // markdown_buy_pct: Phenotypes.RangeFloat(-1, 5),
-    // markup_sell_pct: Phenotypes.RangeFloat(-1, 5),
-    order_type: Phenotypes.ListOption(['maker', 'taker']),
+    period_length: Phenotypes.RangePeriod(30, 30, 's'),
+    // min_periods: Phenotypes.Range(90, 100),
+    // markdown_buy_pct: Phenotypes.RangeFloat(-0.533, 2.533),
+    // markup_sell_pct: Phenotypes.RangeFloat(0.201, 0.580),
+    // order_type: Phenotypes.ListOption(['maker', 'taker']),
+    max_slippage_pct: Phenotypes.RangeFloat(0.01, 1.21),
     sell_stop_pct: Phenotypes.Range0(1, 50),
     buy_stop_pct: Phenotypes.Range0(1, 50),
     profit_stop_enable_pct: Phenotypes.Range0(1, 20),
     profit_stop_pct: Phenotypes.Range(1, 20),
 
-    price_higher_diff: Phenotypes.RangeFloat(0.0, 0.1),
-    sell_trend_start_net_prob_amount: Phenotypes.RangeFloat(2.0, 2.6),
-    sell_trend_start_ema_amount: Phenotypes.RangeFloat(0.0, 5.0),
-    sell_trend_count_threshold_1: Phenotypes.Range(3, 23),
-    sell_trend_1_ema: Phenotypes.RangeFloat(0.0, 4.0),
-    sell_trend_1_markup: Phenotypes.RangeFloat(0.01, 0.5),
-    sell_trend_count_threshold_2: Phenotypes.Range(3, 21),
-    sell_trend_2_ema: Phenotypes.RangeFloat(0.0, 4.0),
-    sell_trend_2_prob_threshold: Phenotypes.RangeFloat(2.0, 2.6),
-    sell_trend_increase_prob: Phenotypes.RangeFloat(2.0, 2.6),
-    sell_trend_end_prob: Phenotypes.RangeFloat(1.9, 2.3),
-    sell_trend_end_ema: Phenotypes.RangeFloat(-1.0, 1.0),
-    sell_trend_end_signal_threshold: Phenotypes.Range(1, 26),
-    buy_trend_start_prob_threshold: Phenotypes.RangeFloat(2.0, 2.5),
-    buy_trend_start_ema_threshold: Phenotypes.RangeFloat(-5.0, 0.0),
-    buy_trend_count_1_threshold: Phenotypes.Range(3, 27),
-    buy_trend_ema_1_threshold: Phenotypes.RangeFloat(-5.0, 0.0),
-    buy_trend_1_markdown: Phenotypes.RangeFloat(0.01, 0.6),
-    buy_trend_count_2_threshold: Phenotypes.Range(3, 21),
-    buy_trend_ema_2_threshold: Phenotypes.RangeFloat(-5.0, 0.0),
-    buy_trend_prob_2_threshold: Phenotypes.RangeFloat(2.0, 2.6),
-    buy_trend_2_markdown: Phenotypes.RangeFloat(0.01, 0.5),
-    buy_trend_count_3_threshold: Phenotypes.Range(3, 31),
-    buy_trend_ema_3_threshold: Phenotypes.RangeFloat(-5.0, 0.0),
-    buy_trend_prob_3_threshold: Phenotypes.RangeFloat(2.0, 2.5),
-    buy_trend_3_markdown: Phenotypes.RangeFloat(0.01, 0.5),
-    buy_trend_increase_prob: Phenotypes.RangeFloat(2.0, 2.5),
-    buy_trend_increase_ema: Phenotypes.RangeFloat(-5.0, 0.0),
-    buy_trend_end_prob: Phenotypes.RangeFloat(1.9, 2.3),
-    buy_trend_end_ema: Phenotypes.RangeFloat(-1.0, 1.0),
-    buy_trend_end_count_signal_threshold: Phenotypes.Range(3, 29)
+    sell_prob: Phenotypes.RangeFloat(0.30, 0.50),
+    buy_prob: Phenotypes.RangeFloat(0.50, 0.70),
+    buy_ema_change: Phenotypes.RangeFloat(-2.0, 0.0),
+    // stoploss: Phenotypes.RangeFloat(0.007, 0.011),
+
+    // l_buy_prob: Phenotypes.RangeFloat(0.578, 0.618),
+    
+    // sell_ema_change: Phenotypes.RangeFloat(-0.118, -0.079),
+    
+    // profit_high_point: Phenotypes.RangeFloat(0.0078, 0.0118),
+    // profit_slide: Phenotypes.RangeFloat(0.0008, 0.0028),
+
+
+    // price_higher_diff: Phenotypes.RangeFloat(0.0, 0.06),
+    // sell_trend_start_net_prob_amount: Phenotypes.RangeFloat(1.4, 2.6),
+    // sell_trend_start_ema_amount: Phenotypes.RangeFloat(0.5, 2.0),
+    
+    // sell_trend_increase_prob: Phenotypes.RangeFloat(2.3, 2.5),
+    // sell_trend_end_prob: Phenotypes.RangeFloat(1.9, 2.5),
+    // sell_trend_end_ema: Phenotypes.RangeFloat(0.1, 1.0),
+    // sell_trend_end_signal_threshold: Phenotypes.Range(4, 28),
+    // buy_trend_start_prob_threshold: Phenotypes.RangeFloat(1.8, 2.2),
+    // buy_trend_start_ema_threshold: Phenotypes.RangeFloat(-2.0, 0.8),
+    
+    // buy_trend_increase_prob: Phenotypes.RangeFloat(2.1, 2.6),
+    // buy_trend_increase_ema: Phenotypes.RangeFloat(-6.0, 1.0),
+    // buy_trend_end_prob: Phenotypes.RangeFloat(2.0, 2.4),
+    // buy_trend_end_ema: Phenotypes.RangeFloat(-0.7, 0.6),
+    // buy_trend_end_count_signal_threshold: Phenotypes.Range(7, 31)
   }
 }
