@@ -13,13 +13,14 @@ let z = require('zero-fill')
   // , getStateTensor = require('./get_state_old')
   // , ichimoku = require('./ichimoku')
   , ema = require('../../../lib/ema')
+  , sma = require('../../../lib/sma')
   // , adx = require('./adx')
   // , macd = require('./macd')
   // , stochastic = require('./stochastic')
   // , parabolicSAR = require('./parabolic_sar')
 // const { onPeriodSimulating, onPeriodTraining } = require('./on_period')
 // const IOHandler = require('./io_handler')
-const logic = require('./logic4')
+const logic = require('./logic4point5')
 const {MinMaxScaler} = require('machinelearn/preprocessing')
 const { PythonShell } = require('python-shell')
 const CostBasisCollection = require('./cost_basis')
@@ -64,6 +65,7 @@ module.exports = {
     this.option('period', 'Period length - longer gets a better average', String, '30s')
     this.option('period_length', 'Period length set same as --period', String, '30s')
     this.option('price_higher_diff', '', Number, 0.04)
+    // this.option('min_periods', '', Number, 20)
     // this.option('sell_trend_start_net_prob_amount', '', Number, 1.4)
     // this.option('sell_trend_start_ema_amount', '', Number, 1.4)
     // this.option('sell_trend_count_threshold_1', '', Number, 13)
@@ -94,15 +96,16 @@ module.exports = {
     // this.option('buy_trend_end_prob', '', Number, 2.0)
     // this.option('buy_trend_end_ema', '', Number, -0.2)
     // this.option('buy_trend_end_count_signal_threshold', '', Number, 21)
-    this.option('sell_prob', '', Number, 0.38)
-    this.option('buy_prob', '', Number, 0.56)
+    this.option('sell_prob', '', Number, 0.41)
+    this.option('buy_prob', '', Number, 0.51)
     this.option('l_buy_prob', '', Number, 0.598)
     this.option('stoploss', '', Number, 0.0089)
-    this.option('sell_ema_change', '', Number, -0.098)
+    this.option('sell_ema_change', '', Number, 0.38)
     this.option('buy_ema_change', '', Number, -1.0)
-    this.option('profit_high_point', '', Number, 0.0048)
+    this.option('profit_high_point', '', Number, 0.0096)
     this.option('profit_slide', '', Number, 0.0012)
-    
+    this.option('ema_dip_point', '', Number, -0.0068)
+    this.option('ema_rebound', '', Number, -0.0008)
   },
   calculate: function (s) {
     if(TRAINING) {
@@ -184,6 +187,7 @@ module.exports = {
     ema(s, 'shortEma', 9)
     ema(s, 'longEma', 96)
     ema(s, 'veryLongEma', 196)
+    ema(s, 'ultraLongEma', 496)
 
 
     if(!s.highs) {
@@ -223,14 +227,25 @@ module.exports = {
     if(typeof s.sellTrendCount === 'undefined') {
       s.sellTrendCount = 0
       s.buyTrendCount = 0
+      s.buyTrendSuffixCount = 0
     }
     if(typeof s.buyTrendStartPrice === 'undefined') {
       s.buyTrendStartPrice = null
       s.highestProfit = 0
+      s.lowestDip = 0
       s.buyTrendStartEma = 0
       s.stopLossCooldown = 0
       s.buyCooldown = 0
       s.buyTimer = 0
+      s.sellTimer = 0
+      s.sellWindowTimer = 0
+      s.inSellWindow = false
+      s.slowLookback = []
+      s.patience = 0
+    }
+
+    if(s.slowLookback.length*10 < s.lookback.length) {
+      // console.log(s.lookback.length)
     }
 
     // s.period.sidewaysSma = s.lookback.slice(0, 48).reduce((s,{sideways: v}) => s+v, 0) / 48.0
@@ -271,26 +286,26 @@ module.exports = {
     }
 
     // if(s.lookback.length > 37) {
-      // console.log(s.period.close)
-      // const lastSlope = s.slope2
-      // const closes = s.closes(38)
-      // s.slope3 = ss.linearRegression(closes.slice(-3).map((c,i) => [i,c])).m
-      // s.slope8 = ss.linearRegression(closes.slice(-8).map((c,i) => [i,c])).m
-      // s.slope18 = ss.linearRegression(closes.slice(-18).map((c,i) => [i,c])).m
-      // s.slope38 = ss.linearRegression(closes.map((c,i) => [i,c])).m
+    // console.log(s.period.close)
+    // const lastSlope = s.slope2
+    // const closes = s.closes(38)
+    // s.slope3 = ss.linearRegression(closes.slice(-3).map((c,i) => [i,c])).m
+    // s.slope8 = ss.linearRegression(closes.slice(-8).map((c,i) => [i,c])).m
+    // s.slope18 = ss.linearRegression(closes.slice(-18).map((c,i) => [i,c])).m
+    // s.slope38 = ss.linearRegression(closes.map((c,i) => [i,c])).m
 
-      // s.rollingAverageClose = closes.slice(-12).reduce((c,s) => c+s, 0) / 12.0
-      // global.rollingAverageClose = s.rollingAverageClose
-      // console.log(s.slope2)
-      // global.slope3 = s.slope3
-      // global.slope8 = s.slope8
-      // global.slope18 = s.slope18
-      // global.slope38 = s.slope38
+    // s.rollingAverageClose = closes.slice(-12).reduce((c,s) => c+s, 0) / 12.0
+    // global.rollingAverageClose = s.rollingAverageClose
+    // console.log(s.slope2)
+    // global.slope3 = s.slope3
+    // global.slope8 = s.slope8
+    // global.slope18 = s.slope18
+    // global.slope38 = s.slope38
 
-      // if(lastSlope) {
-      //   s.rateOfChangeRateOfChange = s.slope2.m - lastSlope.m
-      //   global.rateOfChangeRateOfChange = s.rateOfChangeRateOfChange
-      // }
+    // if(lastSlope) {
+    //   s.rateOfChangeRateOfChange = s.slope2.m - lastSlope.m
+    //   global.rateOfChangeRateOfChange = s.rateOfChangeRateOfChange
+    // }
     // }
 
     if(typeof s.trend === 'undefined') {
@@ -340,6 +355,13 @@ module.exports = {
   
 
     global.avgPrice = s.costBasis.avgPrice()
+
+
+
+    if(s.period.time % 300000 === 0) {
+      // console.log(s.slowLookback.length)
+      s.slowLookback.unshift(s.period)
+    }
 
     if(!CAPTURING) {
       const MIN_PERIODS = 28+48

@@ -64,9 +64,9 @@ module.exports = function(s, weights, cb) {
   
   
   s.options.markdown_buy_pct = 0
-//   s.options.markup_sell_pct = 0
+  //   s.options.markup_sell_pct = 0
   s.options.buy_pct_amount = null
-//   s.options.sell_pct_amount = null
+  //   s.options.sell_pct_amount = null
   
   const allSell = Object.values(downs).reduce((a, d) => a + d, 0)
   const allBuy = Object.values(ups).reduce((a, d) => a + d, 0)

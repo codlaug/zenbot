@@ -77,7 +77,7 @@ module.exports = function(s, weights, cb) {
   // TODO: In genetic sims, markup and markdown can vary a lot
   //       maybe I can make it smarter
 
-  s.options.markdown_buy_pct = 1.0
+  s.options.markdown_buy_pct = 0.5
   s.options.markup_sell_pct = 1.0
   s.options.buy_pct_amount = null
   //   s.options.sell_pct_amount = null
@@ -119,14 +119,25 @@ module.exports = function(s, weights, cb) {
   const lSell = trend8.down
   const lBuy = trend8.up
 
-  const { longEma, veryLongEma, shortEma } = s.period
+  const { longEma, veryLongEma, ultraLongEma, shortEma } = s.period
+
+  console.log('ultraLongEma', ultraLongEma)
+  console.log('last', s.lastUltraLongEma)
+  const ultraLongEmaChange = ultraLongEma - s.lastUltraLongEma
 
   let generalTrend = null
-  if(s.lookback[196]) {
-    if(curPrice < s.lookback[196].close - 60) {
-      generalTrend = 'down'
-    } else if(curPrice > s.lookback[196].close + 80) {
+  // if(s.lookback[196]) {
+  //   if(curPrice < s.lookback[196].close - 60) {
+  //     generalTrend = 'down'
+  //   } else if(curPrice > s.lookback[196].close + 80) {
+  //     generalTrend = 'up'
+  //   }
+  // }
+  if(!isNaN(ultraLongEmaChange)) {
+    if(ultraLongEmaChange > 0.15) {
       generalTrend = 'up'
+    } else if(ultraLongEmaChange < -0.15) {
+      generalTrend = 'down'
     }
   }
   const downwardTrend = generalTrend === 'down'
@@ -149,6 +160,9 @@ module.exports = function(s, weights, cb) {
 
   if(s.buyTrendSuffixCount > 0) {
     s.buyTrendSuffixCount -= 1
+  }
+  if(!upwardTrend && s.patience > 0) {
+    s.patience -= 1
   }
 
 
@@ -174,6 +188,7 @@ module.exports = function(s, weights, cb) {
   const inBuySuffix = s.buyTrendSuffixCount > 0
 
   const { buyTrendEma } = s.period
+  const impatient = s.patience <= 0
 
 
   // console.log(s.period.time)
@@ -190,16 +205,17 @@ module.exports = function(s, weights, cb) {
   // console.log('downward', downwardTrend, `${curPrice} < ${s.lookback[196] && (s.lookback[196].close - 60)}`)
   // console.log('highprofit', `${s.highestProfit} > ${PROFIT_HIGH_POINT*0.4}`)
   // console.log('profitslide', `${profitSlide} > ${s.highestProfit*0.1}`)
+  let verySoftSell = !upwardTrend && impatient && curProfit > 0 && buyTrendEma < SELL_THRESHOLD+0.1
   let softSell1 = downwardTrend && buyTrendEma < SELL_THRESHOLD+0.05 && shortEmaChange < 0.0 && longEmaChange < SELL_EMA_THRESHOLD && (s.highestProfit > PROFIT_HIGH_POINT*0.4 && profitSlide > s.highestProfit*0.1)
-  let softSell2 = false // !upwardTrend && buyTrendEma < SELL_THRESHOLD-0.02 && shortEmaChange < 0.0 && longEmaChange < SELL_EMA_THRESHOLD && (s.highestProfit > PROFIT_HIGH_POINT*0.4 && profitSlide > s.highestProfit*0.1)
-  
+  let softSell2 = !upwardTrend && buyTrendEma < SELL_THRESHOLD-0.02 && shortEmaChange < 0.0 && longEmaChange < SELL_EMA_THRESHOLD && (s.highestProfit > PROFIT_HIGH_POINT*0.4 && profitSlide > s.highestProfit*0.1)
+
   const medSell = false // /*!inBuyTrend &&*/ shortEmaChange < SELL_EMA_THRESHOLD && (s.highestProfit > PROFIT_HIGH_POINT*2 && profitSlide > PROFIT_SLIDE/10)
-  let hardSell = buyTrendEma < SELL_THRESHOLD && (s.highestProfit > PROFIT_HIGH_POINT*4 && profitSlide > PROFIT_SLIDE)
+  let hardSell = !upwardTrend && buyTrendEma < SELL_THRESHOLD && (s.highestProfit > PROFIT_HIGH_POINT*4 && profitSlide > PROFIT_SLIDE)
 
   // sometimes we get the sell signal at the peak, and then the price begins to fall
   if(!s.inSellWindow && downwardTrend && buyTrendEma < SELL_THRESHOLD && s.highestProfit > PROFIT_HIGH_POINT) {
     s.inSellWindow = true
-    s.sellWindowTimer = 30
+    s.sellWindowTimer = 90
   } else if(s.inSellWindow) {
     s.sellWindowTimer -= 1
     if(s.sellWindowTimer === 0) {
@@ -211,8 +227,11 @@ module.exports = function(s, weights, cb) {
   }
 
 
-  if(softSell1 || softSell2 || medSell || hardSell) {
+  if(verySoftSell || softSell1 || softSell2 || medSell || hardSell) {
     s.signal = 'sell'
+    if(verySoftSell) {
+      s.options.markup_sell_pct = 0
+    }
     // if(shortEmaChange < 0) {
     //   s.options.markup_sell_pct = 0
     // }
@@ -223,9 +242,14 @@ module.exports = function(s, weights, cb) {
       console.log('softsell')
       s.buyTimer = s.period.time + 7200000
     } else if(hardSell) {
+      console.log('hardsell')
       s.buyTimer = s.period.time + 36000000
     }
     // console.log('large sell')
+  }
+
+  if(s.sell_order && upwardTrend) {
+    s.signal = 'buy' // cancel sell signal
   }
 
   // stoploss
@@ -267,9 +291,10 @@ module.exports = function(s, weights, cb) {
   
   // console.log('dip', `${s.lowestDip} < ${EMA_DIP_POINT}`, `${dipRebound} < ${EMA_REBOUND}`)
   // console.log(s.buyTrendCount)
-  // console.log('shortEmaChange', `${shortEmaChange} > ${BUY_EMA}`)
-  // console.log('long', longEmaChange)
-  // console.log('verylong', veryLongEmaChange)
+  console.log('shortEmaChange', `${shortEmaChange} > ${BUY_EMA}`)
+  console.log('long', longEmaChange)
+  console.log('verylong', veryLongEmaChange)
+  console.log('ultraLong', ultraLongEmaChange)
   if(s.period.time >= s.buyTimer && 
      inBuyTrend && s.buyTrendCount > 16 && 
      buyTrendEma > BUY_THRESHOLD && 
@@ -280,13 +305,20 @@ module.exports = function(s, weights, cb) {
     // if(!allLookbackPricesHigher) {
     console.log('normal buy')
     s.signal = 'buy'
-    // if(shortEmaChange > 0) {
-    //   s.options.markdown_buy_pct = -0.1
-    // } else if(longEmaChange < -0.5) {
-    //   s.options.markdown_buy_pct = 1
-    // }
+    if(shortEmaChange > 0) {
+      s.options.markdown_buy_pct = -0.1
+    } else if(longEmaChange < -0.5) {
+      s.options.markdown_buy_pct = 1
+    }
+    if(longEmaChange < -0.75) {
+      s.options.markdown_buy_pct = 1
+      if(veryLongEmaChange < -0.5) {
+        s.options.markdown_buy_pct = 2
+      }
+    }
     s.lastBuyTime = s.period.time
     s.lowestDip = 0
+    s.patience = 400
     // }
   }
 
@@ -300,12 +332,13 @@ module.exports = function(s, weights, cb) {
   // }
   
   const rocketBuy1 = shortEmaChange > 1.5 && longEmaChange > 1.0 && veryLongEmaChange > 0.7 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.35 && curPrice < s.lookback[196].close+90
-  const rocketBuy2 = false // shortEmaChange > 1.3 && longEmaChange > 0.04 && veryLongEmaChange > 0.002 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.51 && curPrice < s.lookback[196].close+20
+  const rocketBuy2 = shortEmaChange > 1.3 && longEmaChange > 0.04 && veryLongEmaChange > 0.002 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.51 && curPrice < s.lookback[196].close+20
   const rocketBuy3 = shortEmaChange > 4.0 && longEmaChange > 0.9 && veryLongEmaChange > 0.4 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.35 && curPrice < s.lookback[196].close+90
   if(rocketBuy1 || rocketBuy2) {
     console.log('rocket buy')
     s.options.markdown_buy_pct = -0.2
     s.signal = 'buy'
+    s.patience = 400
     s.lastBuyTime = s.period.time
   }
 
@@ -339,6 +372,7 @@ module.exports = function(s, weights, cb) {
   s.lastShortEma = shortEma
   s.lastLongEma = longEma
   s.lastVeryLongEma = veryLongEma
+  s.lastUltraLongEma = ultraLongEma
   
   // console.log(s.signal)
   //   console.log((avgPrice - curPrice) / curPrice)

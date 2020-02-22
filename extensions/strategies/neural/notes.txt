@@ -1,0 +1,4 @@
+I ocpied it up to seerver
+need to test it I think it's better
+
+rsync -avz source bot@trader:destination
