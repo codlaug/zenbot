@@ -1,11 +1,13 @@
 
 let z = require('zero-fill')
   , n = require('numbro')
+  , https = require('https')
   , Phenotypes = require('../../../lib/phenotype')
   // , colors = require('colors')
   // , chalk = require('chalk')
   // , bollinger = require('./bollinger')
-  // , rsi = require('../../../lib/rsi')
+  , bollinger = require('../../../lib/bollinger')
+  , rsi = require('../../../lib/rsi')
   // , tf = require('@tensorflow/tfjs')
   , fs = require('fs')
   // , TradingAgent = require('./trading_agent')
@@ -13,20 +15,23 @@ let z = require('zero-fill')
   // , getStateTensor = require('./get_state_old')
   // , ichimoku = require('./ichimoku')
   , ema = require('../../../lib/ema')
+  , adx = require('./adx')
+  , atrFunc = require('./atr')
+  , cci = require('./cci')
+  , macd = require('./macd')
   , sma = require('../../../lib/sma')
-  // , adx = require('./adx')
-  // , macd = require('./macd')
   // , stochastic = require('./stochastic')
-  // , parabolicSAR = require('./parabolic_sar')
+  , parabolicSAR = require('./parabolic_sar')
 // const { onPeriodSimulating, onPeriodTraining } = require('./on_period')
 // const IOHandler = require('./io_handler')
-const logic = require('./logic4point5')
+const logic = require('./logic10')
 const {MinMaxScaler} = require('machinelearn/preprocessing')
 const { PythonShell } = require('python-shell')
 const CostBasisCollection = require('./cost_basis')
 const pythonHandler = require('./python_handler3')
 const ss = require('simple-statistics')
 const onReport = require('./on_report')
+// const onReport = ()=>([])
 
 // const spawn = require('child_process').spawn
 
@@ -62,8 +67,8 @@ module.exports = {
   name: 'neural',
   description: 'Use neural learning to predict future price. Buy = mean(last 3 real prices) < mean(current & last prediction)',
   getOptions: function () {
-    this.option('period', 'Period length - longer gets a better average', String, '30s')
-    this.option('period_length', 'Period length set same as --period', String, '30s')
+    this.option('period', 'Period length - longer gets a better average', String, '1m')
+    this.option('period_length', 'Period length set same as --period', String, '1m')
     this.option('price_higher_diff', '', Number, 0.04)
     // this.option('min_periods', '', Number, 20)
     // this.option('sell_trend_start_net_prob_amount', '', Number, 1.4)
@@ -104,8 +109,8 @@ module.exports = {
     this.option('buy_ema_change', '', Number, -1.0)
     this.option('profit_high_point', '', Number, 0.0096)
     this.option('profit_slide', '', Number, 0.0012)
-    this.option('ema_dip_point', '', Number, -0.0068)
-    this.option('ema_rebound', '', Number, -0.0008)
+    this.option('ema_dip_point', '', Number, -0.0044)
+    this.option('ema_rebound', '', Number, -0.0006)
   },
   calculate: function (s) {
     if(TRAINING) {
@@ -169,25 +174,109 @@ module.exports = {
     // }
 
     if(CAPTURING && typeof s.stream === 'undefined') {
-      s.stream = fs.createWriteStream('testdata.json', {flags:'a'})
+      s.stream = fs.createWriteStream('testdata.json', {flags:'w'})
       s.stream.write('[')
     }
 
-    // bollinger(s)
+    if(typeof s.logStream === 'undefined') {
+      s.logStream = fs.createWriteStream('log.txt', {flags:'w'})
+    }
+
+    bollinger(s, 'bollinger', 32)
     // ema(s, 'trend_ema', s.options.min_periods)
     // if (typeof s.period.trend_ema !== 'undefined') {
     //   s.trend = s.period.trend_ema > s.lookback[0].trend_ema ? 'up' : 'down'
     // }
-    // rsi(s, 'rsi', s.options.rsi_periods)
+    rsi(s, 'rsi', s.options.rsi_periods)
     // ichimoku(s)
-    // adx(s)
+    adx(s)
+    sma(s, 'fastMA', 12)
+    sma(s, 'slowMA', 26)
+    sma(s, 'verySlowMA', 200)
     // stochastic(s)
-    // macd(s)
-    // parabolicSAR(s)
+    macd(s, {fastPeriod: 12, slowPeriod: 26, signalPeriod: 9})
+    parabolicSAR(s)
+    atrFunc(s, {period: 20})
+    cci(s, {period: 240})
+
+    const factor = 1
+
+    const { high, low } = s.period
+    s.period.hl2 = (high + low) / 2
+    const { hl2, atr, close } = s.period
+
+    const up = hl2 - (factor * atr)
+    const dn = hl2 + (factor * atr)
+
+    if(false && s.lookback.length > 0) {
+      const { 
+        close: lastClose, 
+        trendUp: lastTrendUp, 
+        trendDown: lastTrendDown,
+        trend: lastTrend
+      } = s.lookback[0]
+      const trendUp = lastClose > lastTrendUp ? Math.max(up, lastTrendUp) : up
+      const trendDown = lastClose < lastTrendDown ? Math.min(dn, lastTrendDown) : dn
+      s.period.trendUp = trendUp
+      s.period.trendDown = trendDown
+
+      const trend = close > lastTrendDown ? 1 : (close < lastTrendUp ? -1 : (isNaN(lastTrend) ? 1 : lastTrend ))
+      s.period.superTrend = trend
+      const tsl = trend === 1 ? trendUp : trendDown
+      s.period.tsl = tsl
+    }
+
+    if(s.lookback.length > 0) {
+      const { cci: thisCCI, atr, high, low } = s.period
+      const lastCCI = s.lookback[0].cci
+      let bufferDn = high + 4 * atr
+      let bufferUp = low - 4 * atr
+      const { bufferUp: lastBufferUp, bufferDn: lastBufferDn } = s.lookback[0]
+      if (thisCCI >= 0 && lastCCI < 0) {
+        bufferUp = lastBufferDn
+      } else if (thisCCI <= 0 && lastCCI > 0) {
+        bufferDn = lastBufferUp
+      }
+      
+      if (thisCCI >= 0) {
+        if (bufferUp < lastBufferUp) {
+          bufferUp = lastBufferUp
+        }
+      } else if (thisCCI <= 0) {
+        if (bufferDn > lastBufferDn) {
+          bufferDn = lastBufferDn
+        }
+      }
+      
+      s.period.bufferUp = bufferUp
+      s.period.bufferDn = bufferDn
+
+      const trendMagicSignal = (thisCCI >= 0 ? bufferUp : (thisCCI <= 0 ? bufferDn : s.lookback[0].trendMagicSignal))
+      s.period.trendMagicSignal = trendMagicSignal
+
+
+      const { trendMagicSignal: lastTrendMagicSignal, trendMagicSignal2: lastTrendMagicSignal2 } = s.lookback[0]
+      const trendMagicSignal2 = trendMagicSignal > lastTrendMagicSignal ? 1 : (trendMagicSignal < lastTrendMagicSignal ? -1 : lastTrendMagicSignal2)
+      s.period.trendMagicSignal2 = trendMagicSignal2
+    }
+
     ema(s, 'shortEma', 9)
+    ema(s, 'medEma', 48)
     ema(s, 'longEma', 96)
     ema(s, 'veryLongEma', 196)
     ema(s, 'ultraLongEma', 496)
+
+    ema(s, 'emaRsi', 24, 'rsi')
+
+    // const { high, low, close } = s.period
+    // s.period.hlc3 = (high + low + close)/3
+
+    // ema(s, 'esa', 48, 'hlc3')
+    // s.period.absDiff = Math.abs(s.period.hlc3 - s.period.esa)
+    // ema(s, 'd', 48, 'absDiff')
+    // s.period.ci = (s.period.hlc3 - s.period.esa) / (0.015 * s.period.d)
+    // ema(s, 'tci', 72, 'ci')
+    
 
 
     if(!s.highs) {
@@ -227,11 +316,15 @@ module.exports = {
     if(typeof s.sellTrendCount === 'undefined') {
       s.sellTrendCount = 0
       s.buyTrendCount = 0
+      s.emaCrossTrendCount = 0
       s.buyTrendSuffixCount = 0
     }
     if(typeof s.buyTrendStartPrice === 'undefined') {
       s.buyTrendStartPrice = null
-      s.highestProfit = 0
+      s.sellTrendStartPrice = null
+      s.highestProfit = -Infinity
+      s.highestPrice = -Infinity
+      s.deepestLoss = 0
       s.lowestDip = 0
       s.buyTrendStartEma = 0
       s.stopLossCooldown = 0
@@ -242,6 +335,15 @@ module.exports = {
       s.inSellWindow = false
       s.slowLookback = []
       s.patience = 0
+      s.consecutiveBuys = 0
+      s.boughtThisSignal = false
+      s.soldThisSignal = false
+      s.cumulativeEma = 0
+      s.requestingFng = false
+      s.highestEmaDiffChange = -Infinity
+      s.highestEmaDiff = -Infinity
+      s.profitSlideTolerance = 0
+      s.lastBuyPrice = 0
     }
 
     if(s.slowLookback.length*10 < s.lookback.length) {
@@ -307,6 +409,35 @@ module.exports = {
     //   global.rateOfChangeRateOfChange = s.rateOfChangeRateOfChange
     // }
     // }
+
+    if(s.options.mode === 'sim') {
+      const timeInSeconds = s.period.time / 1000
+      const timestamp = timeInSeconds - (timeInSeconds % 86400) + 18000
+      if(typeof s.fearGreedClass === 'undefined' || timeInSeconds % 86400 === 0) {
+        s.fearGreed.findOne({timestamp: `${timestamp}`}, function(err, result) {
+          s.fearGreedClass = result.value_classification
+          if(s.lastCapturedTimestamp !== result.timestamp) {
+            s.fearGreedValueChange = parseInt(result.value) - s.fearGreedValue
+          }
+          s.fearGreedValue = parseInt(result.value)
+          s.lastCapturedTimestamp = result.timestamp
+        })
+      }
+    } else {
+      if((typeof s.fearGreedClass === 'undefined' || s.period.time > s.timeUntilUpdate) && !s.requestingFng) {
+        s.requestingFng = true
+        https.get('https://api.alternative.me/fng/', response => {
+          response.on('data', result => {
+            result = result.toString()
+            result = JSON.parse(result).data[0]
+            s.fearGreedClass = result.value_classification
+            s.timeUntilUpdate = s.period.time + parseInt(result.time_until_update)*1000
+            
+            s.requestingFng = false
+          })
+        })
+      }
+    }
 
     if(typeof s.trend === 'undefined') {
       s.trend = null
@@ -383,11 +514,12 @@ module.exports = {
 
         const pyHandler = pythonHandler(s, () => {
           s.pythonProcess.off('message', pyHandler)
-          // console.log('pyHandler cb')
+          console.log('pyHandler cb')
           cb()
         })
 
         if(s.options.mode === 'sim') {
+
           s.predictStore.findOne({period_id: s.period.period_id}, function(err, result){
             if(result) {
               logic(s, result.weights, cb)
@@ -474,12 +606,14 @@ module.exports = {
   onReport: onReport,
 
   onExit: function(s) {
-    s.pythonProcess.end(function (err,code,signal) {
-      // if (err) throw err
-      // console.log('The exit code was: ' + code)
-      // console.log('The exit signal was: ' + signal)
-      // console.log('finished')
-    })
+    if(s.pythonProcess) {
+      s.pythonProcess.end(function (err,code,signal) {
+        // if (err) throw err
+        // console.log('The exit code was: ' + code)
+        // console.log('The exit signal was: ' + signal)
+        // console.log('finished')
+      })
+    }
   },
 
   phenotypes: {

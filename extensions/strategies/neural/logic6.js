@@ -78,7 +78,7 @@ module.exports = function(s, weights, cb) {
   //       maybe I can make it smarter
 
 
-  s.options.markdown_buy_pct = 0.5
+  s.options.markdown_buy_pct = 0.0
   s.options.markup_sell_pct = 0.0
   s.options.buy_pct_amount = null
   s.options.sell_pct_amount = null
@@ -154,6 +154,8 @@ module.exports = function(s, weights, cb) {
     s.period.zScore = signals[signals.length-1]
   }
 
+  const trendBuySignal = s.period.zScore === 1
+
   // if(s.slowLookback.length > 16) {
   //   const length = Math.min(s.slowLookback.length, 196)
   //   const closeArray = s.lookback.slice(0, length).reverse().map(l => l.close)
@@ -184,56 +186,6 @@ module.exports = function(s, weights, cb) {
 
   let buyTrendEnded = false
 
-  // console.log(s.balance)
-  // console.log(s.start_capital)
-  const invested = n(s.balance.currency).subtract(s.start_capital || s.balance.currency)
-  // console.log('invested', invested)
-
-  if(longBuySig) {
-    console.log('in long buy sig')
-    console.log('med', medEmaChange)
-    if(s.buyTrendStartPrice === null) {
-      s.buyTrendStartPrice = curPrice
-    }
-    if(!s.boughtThisSignal) {
-      s.buyTrendCount += 1
-      if(medEmaChange > 0.0) {
-        if(s.buyTrendCount > 14) {
-          s.cumulativeEma += medEmaChange
-          if(s.cumulativeEma > 0.9) {
-            // TODO: change this based on ema
-            s.options.markdown_buy_pct = 0.0
-            // want to trade about a quarter of
-            console.log('ultra', ultraLongEmaChange)
-            s.options.buy_pct_amount = (1/(4-s.consecutiveBuys))*100
-            s.signal = 'buy'
-            if(s.options.buy_pct_amount === 100) {
-              s.options.buy_pct_amount = 99
-            }
-            console.log('buy_amount', s.options.buy_pct_amount)
-            s.boughtThisSignal = true
-            s.consecutiveBuys += 1
-          }
-        }
-      } else {
-        s.cumulativeEma = 0
-      }
-    }
-  } else {
-    if(s.buyTrendStartPrice !== null && s.buyTrendStartPrice - curPrice > 60) {
-      s.signal = 'buy'
-      
-    }
-    s.boughtThisSignal = false
-    s.buyTrendCount = 0
-    s.buyTrendStartPrice = null
-    // s.signal = 'sell'
-  }
-
-  if(s.buyTrendSuffixCount > 0) {
-    s.buyTrendSuffixCount -= 1
-  }
-
 
   const curProfit = avgPrice > 0 ? (curPrice - avgPrice) / curPrice : 0
   const curDip = typeof veryLongEma !== 'undefined' ? (curPrice - veryLongEma) / curPrice : 0
@@ -241,6 +193,112 @@ module.exports = function(s, weights, cb) {
   const profitSlide = (s.highestProfit - curProfit) / s.highestProfit
   // console.log(s.highestProfit)
   
+
+  console.log(s.balance)
+  // console.log(s.start_capital)
+  const invested = n(s.start_capital || s.balance.currency).subtract(s.balance.currency)
+  const percentInvested = invested / s.start_capital
+  const currency = n(s.balance.currency).value()
+  const assets = n(s.balance.asset).value() * curPrice
+  const percentCurrency = currency / (currency + assets)
+  const percentAssets = assets / (currency + assets)
+  // s.logStream.write(`invested: ${percentAssets}\n`)
+
+  if(assets < 0.02) {
+    s.highestProfit = 0
+  }
+
+
+  // s.logStream.write(`tBuy: ${tBuy}\n`)
+  if(tBuy > 0.46) {
+    if(longBuySig || trendBuySignal) {
+      if(!s.boughtThisSignal) {
+        let buyPercent = percentInvested
+        if(percentInvested < 0.02) {
+          buyPercent = 0.25
+        }
+        s.options.buy_pct_amount = Math.round(buyPercent*100)
+        s.logStream.write(`buy: ${s.balance.currency * (buyPercent)}\n`)
+        s.signal = 'buy'
+        s.boughtThisSignal = true
+        s.buyCooldown = 20
+        s.consecutiveBuys += 1
+      }
+    }
+  }
+
+  if(s.boughtThisSignal) {
+    s.buyCooldown -= 1
+    if(s.buyCooldown <= 0) {
+      s.boughtThisSignal = false
+    }
+  }
+
+  const notStillRising = ultraLongEmaChange < 0.20
+
+  if(tSell > 0.40) {
+    // s.logStream.write(`tSell: ${tSell}\n`)
+    // s.logStream.write(`curProfit: ${curProfit}\n`)
+
+    if(false && curProfit > 0.010 && curProfit < 0.015 && notStillRising) {
+      // s.logStream.write(`med: ${medEmaChange}\n`)
+      // s.logStream.write(`long: ${longEmaChange}\n`)
+      // s.logStream.write(`vLong: ${veryLongEmaChange}\n`)
+      // s.logStream.write(`uLong: ${ultraLongEmaChange}\n`)
+      let sellPercent = percentInvested
+      s.logStream.write(`small sellPercent: ${(sellPercent*assets)/curPrice} at curProfit ${curProfit}\n`)
+      if(percentInvested < 0.02) {
+        sellPercent = 0.25
+      }
+      s.options.sell_pct_amount = Math.round((sellPercent)*100)
+      s.signal = 'sell'
+      s.consecutiveBuys -= 1
+    } else if(curProfit < -0.028) {
+      let sellPercent = percentInvested
+      s.logStream.write(`loss sell: ${(sellPercent*assets)/curPrice} at curProfit ${curProfit}\n`)
+      if(percentInvested < 0.02) {
+        sellPercent = 0.25
+      }
+      s.options.sell_pct_amount = Math.round((sellPercent)*100)
+      s.signal = 'sell'
+    }
+  } else if(tSell > 0.34) {
+    // s.logStream.write(`highest: ${s.highestProfit}\n`)
+    // s.logStream.write(`curProfit: ${curProfit}\n`)
+    // s.logStream.write(`profitLoss: ${profitSlide}\n`)
+    const totallyDoneRising = longEmaChange < 0.1
+    if(s.highestProfit >= 0.025) {
+      if(totallyDoneRising) {
+        if(profitSlide > 0.1) {
+          s.logStream.write(`very highSell\n`)
+          s.signal = 'sell'
+          s.highestProfit = 0
+          s.consecutiveBuys -= 1
+        }
+      }
+    }
+  }
+
+  // stoploss
+  // if(s.highestProfit > 0.01 && profitSlide > 0.25) {
+  //   s.signal = 'sell'
+  //   s.consecutiveBuys -= 1
+  // }
+
+  if(trend18.up - s.lastTrend18Up > 0.2) {
+    console.log('panic')
+    s.logStream.write('stoploss panic\n')
+    s.options.old_max_slippage_pct = s.options.max_slippage_pct
+    s.options.max_slippage_pct = 5.0
+    s.signal = 'sell'
+  }
+
+
+  if(s.buyTrendSuffixCount > 0) {
+    s.buyTrendSuffixCount -= 1
+  }
+
+
   if(curDip > 0) {
     s.lowestDip = 0
   }
@@ -256,57 +314,6 @@ module.exports = function(s, weights, cb) {
   const inBuySuffix = s.buyTrendSuffixCount > 0
 
 
-  // console.log(s.highestProfit)
-  if(longSellSig){
-    if(s.sellTrendStartPrice === null) {
-      s.sellTrendStartPrice = s.lookback[18].close
-      s.logStream.write(`sell trend start price ${s.period.time} ${s.lookback[18].close}\n`)
-    }
-    
-    s.sellTrendCount += 1
-    // s.logStream.write(`${s.period.time} in long sell sig  upward:${upwardTrend}\n`)
-    if(s.sellTrendCount > 14) {
-      // console.log('in long sell sig', s.curProfit)
-      
-      if(!s.soldThisSignal) {
-        if(false && tSell > 0.33) {
-          s.signal = 'sell'
-          s.soldThisSignal = true
-        } else if(!upwardTrend && 
-          shortEmaChange < 0.0 && 
-          longEmaChange < 0.3 && 
-          curProfit > 0.002) {
-          s.logStream.write(`curProfit ${s.period.time} ${curProfit}\n`)
-          s.logStream.write(`sell signal ${s.period.time} ${shortEmaChange}  ${longEmaChange}\n`)
-          s.logStream.write(`ultraLong ${s.period.time} ${ultraLongEmaChange}\n`)
-          console.log('sell signal', shortEmaChange, longEmaChange)
-          // console.log('longEma', longEmaChange)
-          s.signal = 'sell'
-
-          s.logStream.write(`consecBuys ${s.consecutiveBuys}`)
-          s.options.sell_pct_amount = (1/s.consecutiveBuys)*100
-          if(s.options.sell_pct_amount === 100 || s.options.sell_pct_amount === Infinity) {
-            s.options.sell_pct_amount = 99
-          }
-          s.soldThisSignal = true
-          console.log('sell_amount', s.options.sell_pct_amount)
-          s.consecutiveBuys -= 1
-          if(s.consecutiveBuys < 0) {
-            s.consecutiveBuys = 0
-          }
-        }
-      }
-    }
-  } else {
-    console.log(curPrice - s.sellTrendStartPrice)
-    if(s.sellTrendStartPrice !== null && curPrice - s.sellTrendStartPrice > 200) {
-      s.signal = 'sell'
-      
-    }
-    s.sellTrendCount = 0
-    s.soldThisSignal = false
-    s.sellTrendStartPrice = null
-  }
 
   // console.log(s.period.time)
 

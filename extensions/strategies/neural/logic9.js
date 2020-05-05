@@ -78,7 +78,7 @@ module.exports = function(s, weights, cb) {
   //       maybe I can make it smarter
 
 
-  s.options.markdown_buy_pct = 0.5
+  s.options.markdown_buy_pct = 0.0
   s.options.markup_sell_pct = 0.0
   s.options.buy_pct_amount = null
   s.options.sell_pct_amount = null
@@ -95,7 +95,8 @@ module.exports = function(s, weights, cb) {
   s.period.triSell = trend18_3.down
   s.period.triBuy = trend18_3.up
 
-  emaFunc(s, 'buyTrendEma', 196, 'allBuy')
+  emaFunc(s, 'buyTrendEma', 96, 'triBuy')
+
   s.period.buyTrendRateOfChange = s.period.buyTrendEma - s.lookback[0].buyTrendEma
   
   const midTrendDown = slope8 < 0
@@ -120,7 +121,7 @@ module.exports = function(s, weights, cb) {
   const lSell = trend8.down
   const lBuy = trend8.up
 
-  const { longEma, veryLongEma, ultraLongEma, shortEma, medEma, buyTrendEma } = s.period
+  const { longEma, veryLongEma, ultraLongEma, shortEma, medEma, buyTrendEma2 } = s.period
 
 
   const shortEmaChange = shortEma - s.lastShortEma
@@ -129,30 +130,59 @@ module.exports = function(s, weights, cb) {
   const veryLongEmaChange = veryLongEma - s.lastVeryLongEma
   const ultraLongEmaChange = ultraLongEma - s.lastUltraLongEma
 
+  if(curPrice < ultraLongEma) {
+    s.period.buyTrendEma += ((ultraLongEma - curPrice) / ultraLongEma)/10
+  } else if(curPrice > ultraLongEma) {
+    s.period.buyTrendEma -= ((curPrice - ultraLongEma) / ultraLongEma)/10
+  }
+
+  const { buyTrendEma } = s.period
+
+  emaFunc(s, 'buyTrendEma2', 96, 'buyTrendEma')
+  emaFunc(s, 'buyTrendEma3', 96, 'buyTrendEma2')
+  
+
   // console.log(ultraLongEmaChange)
 
-  let generalTrend = null
-  if(s.lookback.length >= 296 && !!ultraLongEma) {
-    const pastEma = s.lookback[296].ultraLongEma
-    console.log('emaDiff', ultraLongEma - pastEma)
-    if(ultraLongEma - pastEma > 15) {
-      generalTrend = 'up'
-    } else if(ultraLongEma - pastEma < -15) {
-      generalTrend = 'down'
+  
+  // could adjust these based on fear greed index
+  const downwardTrend = veryLongEma - ultraLongEma < -0.1
+  const upwardTrend = veryLongEma - ultraLongEma > 0.1
+
+  let emasConverging = false
+  if(upwardTrend) {
+    if(ultraLongEmaChange - veryLongEmaChange > 0.1) {
+      emasConverging = true
+    }
+  } else if(downwardTrend) {
+    // ultraLong change is falling faster than veryLong change
+    if(ultraLongEmaChange - veryLongEmaChange < -0.1) {
+      emasConverging = true
     }
   }
-  const downwardTrend = generalTrend === 'down'
-  const upwardTrend = generalTrend === 'up'
+  let emasDiverging = false
+  if(upwardTrend) {
+    if(ultraLongEmaChange - veryLongEmaChange < -0.1) {
+      emasDiverging = true
+    }
+  } else if(downwardTrend) {
+    // veryLong change is falling faster than ultraLong change
+    if(ultraLongEmaChange - veryLongEmaChange > 0.1) {
+      emasDiverging = true
+    }
+  }
 
   // console.log('ultraLongEma', ultraLongEma)
 
   if(s.lookback.length > 16) {
     const length = Math.min(s.lookback.length, 196)
-    const buyTrendArray = s.lookback.slice(0, length).reverse().map(l => l.buyTrendEma)
-    buyTrendArray.push(buyTrendEma)
+    const buyTrendArray = s.lookback.slice(0, length).reverse().map(l => l.buyTrendEma2)
+    buyTrendArray.push(buyTrendEma2)
     const signals = smoothedZScore(buyTrendArray, {threshold: 2.0, lag: length-2})
     s.period.zScore = signals[signals.length-1]
   }
+
+  const trendBuySignal = s.period.zScore === 1
 
   // if(s.slowLookback.length > 16) {
   //   const length = Math.min(s.slowLookback.length, 196)
@@ -163,84 +193,133 @@ module.exports = function(s, weights, cb) {
   // }
 
   if(s.lookback.length > 16) {
-    const length = Math.min(s.lookback.length, 296)
+    const length = Math.min(s.lookback.length, 396)
     const closeArray = s.lookback.slice(0, length).reverse().map(l => l.ultraLongEma)
     closeArray.push(ultraLongEma)
-    const ultraLongEmaZ = smoothedZScore(closeArray, {threshold: 2.0, lag: length-2})
+    const ultraLongEmaZ = smoothedZScore(closeArray, {threshold: 2.1, lag: length-2})
     s.period.ultraLongEmaZ = ultraLongEmaZ[ultraLongEmaZ.length-1]
   }
 
   if(s.lookback.length > 16) {
-    const length = Math.min(s.lookback.length, 16)
-    const closeArray = s.lookback.slice(0, 16).reverse().map(l => l.longEma)
-    closeArray.push(longEma)
+    const length = Math.min(s.lookback.length, 196)
+    const closeArray = s.lookback.slice(0, length).reverse().map(l => l.ultraLongEma - l.veryLongEma)
+    closeArray.push(ultraLongEma - veryLongEma)
     const longEmaZ = smoothedZScore(closeArray, {threshold: 2.2, lag: length-2})
     s.period.longEmaZ = longEmaZ[longEmaZ.length-1]
   }
 
+  if(s.lookback.length > 16) {
+    const length = Math.min(s.lookback.length, 48)
+    const closeArray = s.lookback.slice(0, length).reverse().map(l => l.medEma)
+    closeArray.push(medEma)
+    const medEmaZ = smoothedZScore(closeArray, {threshold: 2.2, lag: length-2})
+    s.period.medEmaZ = medEmaZ[medEmaZ.length-1]
+  }
+
   const longSellSig = s.period.ultraLongEmaZ === 1
   const longBuySig = s.period.ultraLongEmaZ === -1
-  const shortBuySig = s.period.longEmaZ === -1
+  const emaDiffTroughSig = s.period.longEmaZ === -1
+  const emaDiffPeakSig = s.period.longEmaZ === 1
+
+  const emaDiff = ultraLongEma - veryLongEma
 
   let buyTrendEnded = false
 
+
+  const curProfit = avgPrice > 0 ? (curPrice - avgPrice) / curPrice : 0
+  const curDip = typeof veryLongEma !== 'undefined' ? (curPrice - veryLongEma) / curPrice : 0
+  console.log('curProfit', curProfit)
+  s.highestProfit = Math.max(s.highestProfit, curProfit)
+  const profitSlide = (s.highestProfit - curProfit) / s.highestProfit
+  console.log('highestProfit', s.highestProfit)
+  s.highestPrice = Math.max(s.highestPrice, curPrice)
+
+
+  const extremeFear = s.fearGreedClass === 'Extreme Fear'
+  const fear = s.fearGreedClass === 'Fear'
+  const neutral = s.fearGreedClass === 'Neutral'
+  const greed = s.fearGreedClass === 'Greed'
+
+  const noFear = !extremeFear && !fear
+  const someFear = extremeFear || fear
+
+  const { rsi, emaRsi, atr } = s.period
+
+  console.log('atr', atr)
+
+
+  const stoplossPoint = s.highestPrice - atr*2
+
   // console.log(s.balance)
   // console.log(s.start_capital)
-  const invested = n(s.balance.currency).subtract(s.start_capital || s.balance.currency)
-  // console.log('invested', invested)
+  const invested = n(s.start_capital || s.balance.currency).subtract(s.balance.currency)
+  const percentInvested = invested / s.start_capital
+  const currency = n(s.balance.currency).value()
+  const assets = n(s.balance.asset).value() * curPrice
+  const percentCurrency = currency / (currency + assets)
+  const percentAssets = assets / (currency + assets)
+  // s.logStream.write(`invested: ${percentAssets}\n`)
 
-  if(longBuySig) {
-    console.log('in long buy sig')
-    console.log('med', medEmaChange)
-    if(s.buyTrendStartPrice === null) {
-      s.buyTrendStartPrice = curPrice
-    }
-    if(!s.boughtThisSignal) {
-      s.buyTrendCount += 1
-      if(medEmaChange > 0.0) {
-        if(s.buyTrendCount > 14) {
-          s.cumulativeEma += medEmaChange
-          if(s.cumulativeEma > 0.9) {
-            // TODO: change this based on ema
-            s.options.markdown_buy_pct = 0.0
-            // want to trade about a quarter of
-            console.log('ultra', ultraLongEmaChange)
-            s.options.buy_pct_amount = (1/(4-s.consecutiveBuys))*100
-            s.signal = 'buy'
-            if(s.options.buy_pct_amount === 100) {
-              s.options.buy_pct_amount = 99
+  if(assets < 0.02 || n(s.balance.asset).value() < 0.06) {
+    s.highestProfit = -Infinity
+  }
+
+  const notStillRising = ultraLongEmaChange < 0.20
+
+  console.log(`${s.fearGreedClass}: ${s.fearGreedValue}`)
+
+  const { bollinger_lower: bollingerLower } = s.period
+
+  if(s.patience > 0) {
+    s.patience -= 1
+  }
+  
+  if(buyTrendEma > 0.49) {
+    s.signal = 'buy'
+  }
+  if(curProfit > 0.005) {
+    s.signal = 'sell'
+  }
+
+
+  if(s.fearGreedValue >= 8) {
+    // use trend following
+
+    if(atr < 7) {
+      if(upwardTrend) {
+        if(rsi > emaRsi && emasDiverging) {
+          if(emaRsi > 40 && emaRsi < 60) {
+            if(true || emasDiverging) {
+              // s.logStream.write(`buy emaChange: ${veryLongEmaChange}\n`)
+              s.signal = 'buy'
             }
-            console.log('buy_amount', s.options.buy_pct_amount)
-            s.boughtThisSignal = true
-            s.consecutiveBuys += 1
           }
         }
-      } else {
-        s.cumulativeEma = 0
+        if(longSellSig) {
+          s.signal = 'sell'
+        }
+      } else if(downwardTrend) {
+        if(rsi < emaRsi) {
+          if(emaRsi > 40 && emaRsi < 60) {
+            // s.signal = 'sell'
+          }
+        }
       }
     }
-  } else {
-    if(s.buyTrendStartPrice !== null && s.buyTrendStartPrice - curPrice > 60) {
-      s.signal = 'buy'
-      
-    }
-    s.boughtThisSignal = false
-    s.buyTrendCount = 0
-    s.buyTrendStartPrice = null
-    // s.signal = 'sell'
+
   }
+  
+
+  // if(emaDiffPeakSig) {
+  //   s.signal = 'sell'
+  // }
+
 
   if(s.buyTrendSuffixCount > 0) {
     s.buyTrendSuffixCount -= 1
   }
 
 
-  const curProfit = avgPrice > 0 ? (curPrice - avgPrice) / curPrice : 0
-  const curDip = typeof veryLongEma !== 'undefined' ? (curPrice - veryLongEma) / curPrice : 0
-  s.highestProfit = Math.max(s.highestProfit, curProfit)
-  const profitSlide = (s.highestProfit - curProfit) / s.highestProfit
-  // console.log(s.highestProfit)
-  
   if(curDip > 0) {
     s.lowestDip = 0
   }
@@ -256,57 +335,6 @@ module.exports = function(s, weights, cb) {
   const inBuySuffix = s.buyTrendSuffixCount > 0
 
 
-  // console.log(s.highestProfit)
-  if(longSellSig){
-    if(s.sellTrendStartPrice === null) {
-      s.sellTrendStartPrice = s.lookback[18].close
-      s.logStream.write(`sell trend start price ${s.period.time} ${s.lookback[18].close}\n`)
-    }
-    
-    s.sellTrendCount += 1
-    // s.logStream.write(`${s.period.time} in long sell sig  upward:${upwardTrend}\n`)
-    if(s.sellTrendCount > 14) {
-      // console.log('in long sell sig', s.curProfit)
-      
-      if(!s.soldThisSignal) {
-        if(false && tSell > 0.33) {
-          s.signal = 'sell'
-          s.soldThisSignal = true
-        } else if(!upwardTrend && 
-          shortEmaChange < 0.0 && 
-          longEmaChange < 0.3 && 
-          curProfit > 0.002) {
-          s.logStream.write(`curProfit ${s.period.time} ${curProfit}\n`)
-          s.logStream.write(`sell signal ${s.period.time} ${shortEmaChange}  ${longEmaChange}\n`)
-          s.logStream.write(`ultraLong ${s.period.time} ${ultraLongEmaChange}\n`)
-          console.log('sell signal', shortEmaChange, longEmaChange)
-          // console.log('longEma', longEmaChange)
-          s.signal = 'sell'
-
-          s.logStream.write(`consecBuys ${s.consecutiveBuys}`)
-          s.options.sell_pct_amount = (1/s.consecutiveBuys)*100
-          if(s.options.sell_pct_amount === 100 || s.options.sell_pct_amount === Infinity) {
-            s.options.sell_pct_amount = 99
-          }
-          s.soldThisSignal = true
-          console.log('sell_amount', s.options.sell_pct_amount)
-          s.consecutiveBuys -= 1
-          if(s.consecutiveBuys < 0) {
-            s.consecutiveBuys = 0
-          }
-        }
-      }
-    }
-  } else {
-    console.log(curPrice - s.sellTrendStartPrice)
-    if(s.sellTrendStartPrice !== null && curPrice - s.sellTrendStartPrice > 200) {
-      s.signal = 'sell'
-      
-    }
-    s.sellTrendCount = 0
-    s.soldThisSignal = false
-    s.sellTrendStartPrice = null
-  }
 
   // console.log(s.period.time)
 
@@ -320,7 +348,7 @@ module.exports = function(s, weights, cb) {
   // console.log(`${longEmaChange} < ${SELL_EMA_THRESHOLD}`)
 //   console.log('upward', `${curPrice} > ${s.lookback[196] && (s.lookback[196].close + 80)}`)
 //   console.log('downward', downwardTrend, `${curPrice} < ${s.lookback[196] && (s.lookback[196].close - 60)}`)
-  console.log('highprofit', `${s.highestProfit} > ${PROFIT_HIGH_POINT}`)
+  // console.log('highprofit', `${s.highestProfit} > ${PROFIT_HIGH_POINT}`)
   console.log('profitslide', `${profitSlide} < ${0.9}`)
   // let softSell1 = downwardTrend && longSellSig && shortEmaChange < 0.0 && longEmaChange < SELL_EMA_THRESHOLD && (s.highestProfit > PROFIT_HIGH_POINT*0.4 && profitSlide > s.highestProfit*0.1)
   // let softSell2 = !upwardTrend && longSellSig && shortEmaChange < 0.0 && longEmaChange < SELL_EMA_THRESHOLD && (s.highestProfit > PROFIT_HIGH_POINT*0.4 && profitSlide > s.highestProfit*0.1)
@@ -408,29 +436,29 @@ module.exports = function(s, weights, cb) {
   // console.log('shortEmaChange', `${shortEmaChange} > ${BUY_EMA}`)
   // console.log('long', longEmaChange)
   // console.log('verylong', veryLongEmaChange)
-  if(s.period.time >= s.buyTimer && 
-    // buyTrendEnded && 
-    !downwardTrend &&
-    s.lowestDip < EMA_DIP_POINT && 
-    //  s.buyTrendCount > 13 && 
-    //  buyTrendEma > BUY_THRESHOLD && 
-     // buySig && 
-    shortEmaChange > BUY_EMA
-     /*(s.lowestDip < EMA_DIP_POINT && dipRebound < EMA_REBOUND)*/) {
-    // const allLookbackPricesHigher = s.lookback[96] && s.lookback.slice(32, 96).map(l => l.close).reduce((r, c) => r && c > curPrice, true)
-    // console.log('lookbacks higher', allLookbackPricesHigher)
-    // if(!allLookbackPricesHigher) {
-    console.log('normal buy')
-    // s.signal = 'buy'
-    if(shortEmaChange > 0) {
-      s.options.markdown_buy_pct = -0.1
-    } else if(longEmaChange < -0.5) {
-      s.options.markdown_buy_pct = 1
-    }
-    s.lastBuyTime = s.period.time
-    s.lowestDip = 0
-    // }
-  }
+  // if(s.period.time >= s.buyTimer && 
+  //   // buyTrendEnded && 
+  //   !downwardTrend &&
+  //   s.lowestDip < EMA_DIP_POINT && 
+  //   //  s.buyTrendCount > 13 && 
+  //   //  buyTrendEma > BUY_THRESHOLD && 
+  //    // buySig && 
+  //   shortEmaChange > BUY_EMA
+  //    /*(s.lowestDip < EMA_DIP_POINT && dipRebound < EMA_REBOUND)*/) {
+  //   // const allLookbackPricesHigher = s.lookback[96] && s.lookback.slice(32, 96).map(l => l.close).reduce((r, c) => r && c > curPrice, true)
+  //   // console.log('lookbacks higher', allLookbackPricesHigher)
+  //   // if(!allLookbackPricesHigher) {
+  //   console.log('normal buy')
+  //   // s.signal = 'buy'
+  //   if(shortEmaChange > 0) {
+  //     s.options.markdown_buy_pct = -0.1
+  //   } else if(longEmaChange < -0.5) {
+  //     s.options.markdown_buy_pct = 1
+  //   }
+  //   s.lastBuyTime = s.period.time
+  //   s.lowestDip = 0
+  //   // }
+  // }
 
   // if things are rocketing up, jump on the wagon
   // if(shortEmaChange > 1.0) {
@@ -441,15 +469,15 @@ module.exports = function(s, weights, cb) {
   //   console.log('curPrice oldPrice', `${curPrice} < ${s.lookback[196] && s.lookback[196].close+90}`)
   // }
   
-  const rocketBuy1 = shortEmaChange > 1.5 && longEmaChange > 1.0 && veryLongEmaChange > 0.7 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.35 && curPrice < s.lookback[196].close+90
-  const rocketBuy2 = shortEmaChange > 1.3 && longEmaChange > 0.04 && veryLongEmaChange > 0.002 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.51 && curPrice < s.lookback[196].close+20
-  const rocketBuy3 = shortEmaChange > 4.0 && longEmaChange > 0.9 && veryLongEmaChange > 0.4 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.35 && curPrice < s.lookback[196].close+90
-  if(rocketBuy1 || rocketBuy2) {
-    console.log('rocket buy')
-    s.options.markdown_buy_pct = -0.2
-    // s.signal = 'buy'
-    s.lastBuyTime = s.period.time
-  }
+  // const rocketBuy1 = shortEmaChange > 1.5 && longEmaChange > 1.0 && veryLongEmaChange > 0.7 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.35 && curPrice < s.lookback[196].close+90
+  // const rocketBuy2 = shortEmaChange > 1.3 && longEmaChange > 0.04 && veryLongEmaChange > 0.002 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.51 && curPrice < s.lookback[196].close+20
+  // const rocketBuy3 = shortEmaChange > 4.0 && longEmaChange > 0.9 && veryLongEmaChange > 0.4 && (inBuyTrend || inBuySuffix) && buyTrendEma > 0.35 && curPrice < s.lookback[196].close+90
+  // if(rocketBuy1 || rocketBuy2) {
+  //   console.log('rocket buy')
+  //   s.options.markdown_buy_pct = -0.2
+  //   // s.signal = 'buy'
+  //   s.lastBuyTime = s.period.time
+  // }
   
 
   // uncertainty!! Jan 21st for instance

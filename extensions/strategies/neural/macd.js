@@ -8,9 +8,9 @@ module.exports = function macd(s, options) {
       signalPeriod: 3
     }
   }
-  if (s.lookback.length >= 30) {
+  if (s.lookback.length >= options.slowPeriod+options.signalPeriod) {
     const input = {
-      values: s.lookback.slice(0, 30).map(p => p.close).reverse(),
+      values: s.lookback.slice(0, options.slowPeriod+options.signalPeriod).map(p => p.close).reverse(),
       fastPeriod: options.fastPeriod,
       slowPeriod: options.slowPeriod,
       signalPeriod: options.signalPeriod,

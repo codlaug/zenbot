@@ -19,7 +19,7 @@ module.exports = function onReport() {
   }
   if(trend18) {
     const { down: down18 } = trend18
-    cols.push(chalk.rgb(Math.min(255, Math.round(200*((down18-0.3)*5))+55), 0, 0)(n(down18).format('00%')+' '))
+    // cols.push(chalk.rgb(Math.min(255, Math.round(200*((down18-0.3)*5))+55), 0, 0)(n(down18).format('00%')+' '))
   }
   if(trend18_3) {
     const { down: down18_3 } = trend18_3
@@ -27,11 +27,11 @@ module.exports = function onReport() {
   }
   if(trend8) {
     const { down: down8 } = trend8
-    cols.push(chalk.rgb(Math.min(255, Math.round(200*((down8-0.4)*5))+55), 0, 0)(n(down8).format('00%')+' '))
+    // cols.push(chalk.rgb(Math.min(255, Math.round(200*((down8-0.4)*5))+55), 0, 0)(n(down8).format('00%')+' '))
   }
   if(trend3) {
     const { down: down3 } = trend3
-    cols.push(chalk.rgb(Math.min(255, Math.round(200*((down3-0.4)*5))+55), 0, 0)(n(down3).format('00%')+' '))
+    // cols.push(chalk.rgb(Math.min(255, Math.round(200*((down3-0.4)*5))+55), 0, 0)(n(down3).format('00%')+' '))
   }
   if(ema) {
     cols.push(chalk.rgb(200, 50, 200)(z(4, n(ema).format('0.00'), ' ')+' '))
@@ -80,15 +80,15 @@ module.exports = function onReport() {
   }
   if(trend3) {
     const { up: up3 } = trend3
-    cols.push(chalk.rgb(0, Math.max(1, Math.min(255, Math.round(200*((up3-0.4)*5))+55)), 0)(n(up3).format('00%')+' '))
+    // cols.push(chalk.rgb(0, Math.max(1, Math.min(255, Math.round(200*((up3-0.4)*5))+55)), 0)(n(up3).format('00%')+' '))
   }
   if(trend8) {
     const { up: up8 } = trend8
-    cols.push(chalk.rgb(0, Math.max(1, Math.min(255, Math.round(200*((up8-0.4)*5))+55)), 0)(n(up8).format('00%')+' '))
+    // cols.push(chalk.rgb(0, Math.max(1, Math.min(255, Math.round(200*((up8-0.4)*5))+55)), 0)(n(up8).format('00%')+' '))
   }
   if(trend18) {
     const { up: up18 } = trend18
-    cols.push(chalk.rgb(0, Math.max(1, Math.min(255, Math.round(200*((up18-0.3)*5))+55)), 0)(n(up18).format('00%')+' '))
+    // cols.push(chalk.rgb(0, Math.max(1, Math.min(255, Math.round(200*((up18-0.3)*5))+55)), 0)(n(up18).format('00%')+' '))
   }
   if(trend18_3) {
     const { up: up18_3 } = trend18_3
